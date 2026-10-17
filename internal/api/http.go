@@ -278,6 +278,14 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request, p Profile, kind s
 		if e = rows.Err(); e != nil {
 			return e
 		}
+		rows.Close()
+		for i, t := range out {
+			cached := s.cachedTitle(t.Identity)
+			if cached.Title != "" {
+				t = cached
+			}
+			out[i] = publicTitle(t)
+		}
 		write(w, 200, map[string]any{"titles": out})
 		return nil
 	}

@@ -45,8 +45,21 @@ routing. The prior ended live allowance is neither opened nor reset. The relay's
 existing live-playback matrix remains open. Clients and Mello deployment are out
 of scope.
 
-Final-head formatting, vet, race, build, process-smoke, dependency audit and
-manual Greptile review results are recorded in the delivery PR/report. The explicit
+Local formatting, vet, race suite, command build, explicit compiled-daemon startup/
+SIGINT/restart smoke, two process-owner Python regressions, and HLS/MP4 production-
+listener integration pass. The dependency audit reports zero reachable/package
+vulnerabilities and one module-only advisory in code not called by this service.
+The compiled-daemon smoke is invoked with `FAMILY_STREAM_API_BINARY` pointing to
+an explicitly built binary and `go test -race -run '^TestCompiledDaemonLifecycle$'
+./internal/api`; it uses only temporary synthetic configuration and state.
+
+Additional regressions cover failed SQLite snapshot commits, shutdown cancellation
+and handler joining, full-pool recommendation category views, qualification
+fingerprints, unestablished playback telemetry rejection, service-port validation,
+late library metadata enrichment, artwork rewriting and lossless large private
+JSON numbers. Process-owner tests prove a timed-out test descendant is terminated.
+
+Final-head CI, review status and delivery commit evidence are recorded in the PR. The explicit
 cross-language integration requires the sibling service sources and cached Go/Rust
 dependencies; default GitHub CI uses only this repository and stays offline with
 respect to providers/media.

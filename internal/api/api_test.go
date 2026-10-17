@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -554,5 +555,152 @@ func TestJSONBoundsAndCSRF(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != 403 {
 		t.Fatal("CSRF allowed")
+	}
+}
+
+func TestSnapshotCommitFailurePreservesPrior(t *testing.T) {
+	f := newFixture(t)
+	token := f.setup()
+	f.seedSnapshot("")
+	if _, e := f.s.db.Exec("CREATE TRIGGER reject_snapshot BEFORE UPDATE ON snapshot BEGIN SELECT RAISE(ABORT,'synthetic'); END"); e != nil {
+		t.Fatal(e)
+	}
+	f.mu.Lock()
+	f.snapshot.Revision = 2
+	f.snapshot.Exported = time.Now().UTC()
+	f.snapshot.Records[0].Data = marshal(Title{Identity: Identity{"movie", 7}, Title: "Replacement"})
+	f.mu.Unlock()
+	if e := f.s.SyncSnapshot(context.Background()); e == nil {
+		t.Fatal("commit failure ignored")
+	}
+	b := f.want(200, "GET", "/api/v1/titles/movie/7", token, nil, "")
+	if bytes.Contains(b, []byte("Replacement")) {
+		t.Fatal("uncommitted snapshot published")
+	}
+	f.restart()
+	f.want(200, "GET", "/api/v1/artwork/w500/example.png", token, nil, "")
+}
+func TestOwnedShutdownCancelsAndJoinsRequests(t *testing.T) {
+	f := newFixture(t)
+	token := f.setup()
+	p := f.profile(token)
+	entered := make(chan struct{})
+	exited := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		close(entered)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(3 * time.Second):
+		}
+		close(exited)
+	}))
+	defer server.Close()
+	f.s.cfg.ProviderURL = server.URL
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = f.request("POST", "/api/v1/profiles/"+p.ID+"/playback", token, map[string]any{"type": "movie", "id": 7}, "shutdown")
+	}()
+	<-entered
+	closed := make(chan struct{})
+	go func() { _ = f.s.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("service did not join owned handler")
+	}
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("private request not canceled")
+	}
+	<-done
+}
+func TestRecommendationViewsAndFingerprint(t *testing.T) {
+	r := Recommendations{Sections: []Shelf{{ID: "for-you"}}}
+	for i := 1; i <= 30; i++ {
+		r.Pool = append(r.Pool, Title{Identity: Identity{"movie", int64(i)}, Title: fmt.Sprintf("Movie %c", 'A'+i)})
+	}
+	r.Pool = append(r.Pool, Title{Identity: Identity{"tv", 42}, Title: "Series"})
+	v := recommendationView(r, "tv", "both")
+	if len(v.Sections[0].Titles) != 1 || v.Sections[0].Titles[0].Type != "tv" {
+		t.Fatal("category view lost pool titles")
+	}
+	v = recommendationView(r, "all", "tv")
+	if len(v.Sections[0].Titles) != 24 || v.Sections[0].Titles[0].Type != "tv" {
+		t.Fatal("format preference ignored")
+	}
+	p := inputs{Format: "both", Signals: []signal{{Identity: Identity{"tv", 1}, Watched: 2699, Updated: time.Now()}}}
+	before := p.fingerprint()
+	p.Signals[0].Watched = 2700
+	if before == p.fingerprint() {
+		t.Fatal("qualification crossing did not invalidate fingerprint")
+	}
+}
+func TestProgressCannotUseUnestablishedPlayback(t *testing.T) {
+	f := newFixture(t)
+	token := f.setup()
+	p := f.profile(token)
+	pbid := id()
+	_, e := f.s.db.Exec("INSERT INTO playbacks(id,profile,request,expires,created,idem,fingerprint) VALUES(?,?,?,?,?,?,?)", pbid, p.ID, marshal(PlaybackRequest{Target: Target{Identity: Identity{"movie", 7}}}), time.Now().Add(time.Hour).Unix(), time.Now().Unix(), "pending", "fingerprint")
+	if e != nil {
+		t.Fatal(e)
+	}
+	f.want(409, "PUT", "/api/v1/profiles/"+p.ID+"/progress", token, map[string]any{"playback_id": pbid, "sequence": 1, "position_seconds": 10, "duration_seconds": 7200, "watched_seconds": 10}, "")
+}
+func TestConfigValidation(t *testing.T) {
+	f := newFixture(t)
+	path := filepath.Join(t.TempDir(), "config.json")
+	save := func(c Config) {
+		t.Helper()
+		if e := os.WriteFile(path, marshal(c), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	save(f.c)
+	if _, e := LoadConfig(path); e != nil {
+		t.Fatal(e)
+	}
+	for _, alter := range []func(*Config){func(c *Config) { c.ProviderURL = c.CatalogURL }, func(c *Config) { c.RelayURL = "http://outside.example:8094" }, func(c *Config) { c.Listen = "0.0.0.0:8090" }, func(c *Config) { c.Origin = "http://unsafe.example" }} {
+		c := f.c
+		alter(&c)
+		save(c)
+		if _, e := LoadConfig(path); e == nil {
+			t.Fatal("invalid config accepted")
+		}
+	}
+}
+func TestSavedTitlesJoinSnapshotAndRewriteArtwork(t *testing.T) {
+	f := newFixture(t)
+	token := f.setup()
+	p := f.profile(token)
+	path := "/api/v1/profiles/" + p.ID
+	for _, kind := range []string{"library", "favorites"} {
+		f.want(204, "PUT", path+"/"+kind+"/movie/7", token, nil, "")
+	}
+	f.seedSnapshot(p.ID)
+	for _, kind := range []string{"library", "favorites"} {
+		b := f.want(200, "GET", path+"/"+kind, token, nil, "")
+		if bytes.Contains(b, []byte("/internal/v1/")) || !bytes.Contains(b, []byte("/api/v1/artwork/")) || !bytes.Contains(b, []byte("Example")) {
+			t.Fatal("saved metadata was not joined/rewritten")
+		}
+	}
+	in, _, e := f.s.derived(context.Background(), p.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if in.Favorites[0].Title != "Example" {
+		t.Fatal("derived favorite name stale")
+	}
+}
+func TestPrivatePayloadPreservesLargeJSONNumbers(t *testing.T) {
+	b := []byte(`{"selection":{"unknown":{"counter":9007199254740993},"duration":25000000000}}`)
+	var v any
+	if e := decode(b, &v); e != nil {
+		t.Fatal(e)
+	}
+	if !bytes.Contains(marshal(v), []byte("9007199254740993")) {
+		t.Fatal("private metadata number rounded")
 	}
 }

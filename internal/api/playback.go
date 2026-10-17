@@ -387,6 +387,13 @@ func (s *Service) mutatePlayback(w http.ResponseWriter, r *http.Request, p Playb
 			return &fault{409, "operation_pending"}
 		}
 	} else if errors.Is(e, sql.ErrNoRows) {
+		var mutations int
+		if e := s.db.QueryRowContext(r.Context(), "SELECT count(*) FROM mutation_history WHERE playback=?", p.ID).Scan(&mutations); e != nil {
+			return e
+		}
+		if mutations >= 256 {
+			return &fault{409, "mutation_limit"}
+		}
 		if in.Revision != p.Ready.Revision {
 			return conflict()
 		}
@@ -477,17 +484,14 @@ func (s *Service) completeMutation(w http.ResponseWriter, r *http.Request, p Pla
 	if ready.SID != p.Ready.SID || ready.Revision != revision+1 || ready.AuthRevision != p.Ready.AuthRevision {
 		return &fault{502, "relay_invalid_transition"}
 	}
+	if kind == "renew" && (ready.Generation != p.Ready.Generation || !ready.Expires.After(p.Ready.Expires)) {
+		return &fault{502, "relay_invalid_transition"}
+	}
 	if kind != "renew" && ready.Generation <= p.Ready.Generation {
 		return &fault{502, "relay_invalid_transition"}
 	}
 	e := transaction(r.Context(), s.db, func(tx *sql.Tx) error {
-		var n int
-		if e := tx.QueryRow("SELECT count(*) FROM mutation_history WHERE playback=?", p.ID).Scan(&n); e != nil {
-			return e
-		}
-		if n >= 256 {
-			return &fault{409, "mutation_limit"}
-		}
+
 		if _, e := tx.Exec("INSERT INTO mutation_history VALUES(?,?,?,?,?)", p.ID, key, kind, revision, marshal(ready)); e != nil {
 			return e
 		}

@@ -109,6 +109,12 @@ func (s *Service) derived(ctx context.Context, pid string) (inputs, int64, error
 	if e != nil {
 		return out, version, e
 	}
+	for i := range out.Favorites {
+		t := s.cachedTitle(out.Favorites[i].Identity)
+		if t.Title != "" {
+			out.Favorites[i].Title = t.Title
+		}
+	}
 	for i := range out.Signals {
 		out.Signals[i].Title = s.cachedTitle(out.Signals[i].Identity).Title
 	}

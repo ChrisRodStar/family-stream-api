@@ -5,14 +5,12 @@ No production destination/guard policy changes; no sibling checkout is edited.
 import os
 import pathlib
 import shutil
-import subprocess
+import signal
+from process_owner import run
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
-
-def run(argv, cwd, env):
-    subprocess.run(argv, cwd=cwd, env=env, check=True, timeout=240)
 
 def main():
     env = dict(os.environ, GOPROXY="off", GOSUMDB="off")
@@ -41,4 +39,7 @@ def main():
         run(["cargo", "test", "--locked", "--offline", "--lib", "public_api_production_listeners", "--", "--ignored", "--nocapture"], relay, env)
 
 if __name__ == "__main__":
+    def interrupted(_signum, _frame):
+        raise RuntimeError("integration owner interrupted")
+    signal.signal(signal.SIGTERM, interrupted)
     main()

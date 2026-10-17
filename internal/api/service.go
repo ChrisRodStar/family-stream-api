@@ -10,8 +10,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"reflect"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -224,6 +226,7 @@ func decode(b []byte, v any) error {
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
+	d.UseNumber()
 	if e := d.Decode(v); e != nil {
 		return bad()
 	}
@@ -249,6 +252,21 @@ func (s *Service) Handler() http.Handler {
 		default:
 			writeError(w, &fault{429, "overloaded"})
 			return
+		}
+		if len(r.URL.Path) > 4096 || len(r.URL.RawQuery) > 4096 {
+			writeError(w, bad())
+			return
+		}
+		query, e := url.ParseQuery(r.URL.RawQuery)
+		if e != nil {
+			writeError(w, bad())
+			return
+		}
+		for _, values := range query {
+			if len(values) != 1 {
+				writeError(w, bad())
+				return
+			}
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 		defer cancel()
@@ -276,6 +294,12 @@ func body(r *http.Request, v any) error {
 	}
 	b, e := io.ReadAll(io.LimitReader(r.Body, 32769))
 	if e != nil || len(b) > 32768 {
+		return bad()
+	}
+	if strings.HasSuffix(r.URL.Path, "/progress") && !requiredKeys(b, "playback_id", "sequence", "position_seconds", "duration_seconds", "watched_seconds") {
+		return bad()
+	}
+	if strings.HasSuffix(r.URL.Path, "/preferences") && !requiredKeys(b, "completed", "format", "genres") {
 		return bad()
 	}
 	if e := requestShape(b, reflect.TypeOf(v)); e != nil {
