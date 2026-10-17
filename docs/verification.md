@@ -70,11 +70,10 @@ Adjacent baseline checks also pass unchanged: catalog/provider `go vet`, race
 suites and builds; relay formatting, locked all-target/all-feature clippy with
 warnings denied and locked all-target tests. No sibling source patch was needed.
 
-Manual Greptile requests were posted to the new private repository's PR. At the
-last delivery checkpoint no bot response, completed review, or Greptile check was
-present. The available classic GitHub token cannot list App installations (403),
-and the available browser session is signed out, so review-app repository access
-cannot be verified or repaired here. The PR remains unmerged pending the required
-completed final-head review. This is an external review/access blocker, not a
-reported successful review; local main remains the scaffold until merge is allowed
-by that review requirement. Current PR/head status is authoritative in GitHub.
+Manual Greptile requests were posted to the new private repository's PR, but no
+completed Greptile review was obtained. The user subsequently confirmed their
+Greptile review allowance was exhausted and explicitly authorized merging without
+that review. The prior external-review prerequisite is waived for this delivery;
+this is not a claim that Greptile reviewed or approved the code. Local verification
+and final implementation-head CI passed before this documentation-only update.
+Current PR/merge and commit evidence is recorded in GitHub PR #1.
