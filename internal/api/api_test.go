@@ -704,3 +704,82 @@ func TestPrivatePayloadPreservesLargeJSONNumbers(t *testing.T) {
 		t.Fatal("private metadata number rounded")
 	}
 }
+func TestTVMeasuredEpisodeAggregationAndProfileIsolation(t *testing.T) {
+	f := newFixture(t)
+	token := f.setup()
+	p := f.profile(token)
+	other := f.profile(token)
+	path := "/api/v1/profiles/" + p.ID
+	for _, ep := range []int{1, 2} {
+		pb := f.play(token, p.ID, map[string]any{"type": "tv", "id": 7, "season": 0, "episode": ep}, fmt.Sprintf("ep%d", ep))
+		_, e := f.s.db.Exec("UPDATE playbacks SET created=? WHERE id=?", time.Now().Add(-time.Hour).Unix(), pb)
+		if e != nil {
+			t.Fatal(e)
+		}
+		update := map[string]any{"playback_id": pb, "sequence": 1, "position_seconds": 2000, "duration_seconds": 2400, "watched_seconds": 600}
+		f.want(200, "PUT", path+"/progress", token, update, "")
+		f.want(404, "PUT", "/api/v1/profiles/"+other.ID+"/progress", token, update, "")
+	}
+	in, _, e := f.s.derived(context.Background(), p.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(in.Signals) != 1 || in.Signals[0].Watched != 1200 || in.Signals[0].Episodes != 2 {
+		t.Fatal("distinct episode aggregation incorrect")
+	}
+	unrelated, _, e := f.s.derived(context.Background(), other.ID)
+	if e != nil || len(unrelated.Signals) != 0 {
+		t.Fatal("profile signals leaked")
+	}
+}
+func TestNoSourceDoesNotCreateRelaySession(t *testing.T) {
+	f := newFixture(t)
+	token := f.setup()
+	p := f.profile(token)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		write(w, 200, map[string]any{"version": "providers.v1", "backups": []any{}, "rejected": map[string]string{}, "providers": []any{}})
+	}))
+	defer server.Close()
+	f.s.cfg.ProviderURL = server.URL
+	f.want(422, "POST", "/api/v1/profiles/"+p.ID+"/playback", token, map[string]any{"type": "movie", "id": 7}, "no-source")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.relayCreates != 0 {
+		t.Fatal("empty selection imported")
+	}
+}
+func TestExclusiveDatabaseOwner(t *testing.T) {
+	f := newFixture(t)
+	if s, e := New(f.c); e == nil {
+		s.Close()
+		t.Fatal("two API processes could own the same database")
+	}
+	f.restart()
+	f.want(200, "GET", "/health/readyz", "", nil, "")
+}
+func TestBackgroundWorkerShutdown(t *testing.T) {
+	f := newFixture(t)
+	entered := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/internal/v1/snapshot" {
+			close(entered)
+			select {
+			case <-r.Context().Done():
+			case <-time.After(3 * time.Second):
+			}
+		} else {
+			w.WriteHeader(503)
+		}
+	}))
+	defer server.Close()
+	f.s.cfg.CatalogURL = server.URL
+	f.s.Start()
+	<-entered
+	done := make(chan struct{})
+	go func() { f.s.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("background workers did not join")
+	}
+}

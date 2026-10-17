@@ -56,10 +56,25 @@ an explicitly built binary and `go test -race -run '^TestCompiledDaemonLifecycle
 Additional regressions cover failed SQLite snapshot commits, shutdown cancellation
 and handler joining, full-pool recommendation category views, qualification
 fingerprints, unestablished playback telemetry rejection, service-port validation,
-late library metadata enrichment, artwork rewriting and lossless large private
+late library metadata enrichment, exclusive database ownership, joined background
+workers, distinct meaningful-episode aggregation, no-source rejection, artwork
+rewriting and lossless large private
 JSON numbers. Process-owner tests prove a timed-out test descendant is terminated.
 
 Final-head CI, review status and delivery commit evidence are recorded in the PR. The explicit
 cross-language integration requires the sibling service sources and cached Go/Rust
 dependencies; default GitHub CI uses only this repository and stays offline with
 respect to providers/media.
+
+Adjacent baseline checks also pass unchanged: catalog/provider `go vet`, race
+suites and builds; relay formatting, locked all-target/all-feature clippy with
+warnings denied and locked all-target tests. No sibling source patch was needed.
+
+Manual Greptile requests were posted to the new private repository's PR. At the
+last delivery checkpoint no bot response, completed review, or Greptile check was
+present. The available classic GitHub token cannot list App installations (403),
+and the available browser session is signed out, so review-app repository access
+cannot be verified or repaired here. The PR remains unmerged pending the required
+completed final-head review. This is an external review/access blocker, not a
+reported successful review; local main remains the scaffold until merge is allowed
+by that review requirement. Current PR/head status is authoritative in GitHub.

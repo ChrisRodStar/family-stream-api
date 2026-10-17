@@ -7,10 +7,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"golang.org/x/sys/unix"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -20,6 +23,9 @@ import (
 )
 
 type Service struct {
+	owner         *os.File
+	closeOnce     sync.Once
+	closeErr      error
 	lifecycleMu   sync.Mutex
 	cfg           Config
 	db            *sql.DB
@@ -55,7 +61,7 @@ func New(c Config) (*Service, error) {
 	s := &Service{cfg: c, signer: signer, encryption: key, tokens: map[string]string{}, slots: make(chan struct{}, 32), authSlots: make(chan struct{}, 2)}
 	for name, path := range map[string]string{"catalog": c.CatalogTokenFile, "provider": c.ProviderTokenFile, "relay": c.RelayTokenFile, "setup": c.SetupTokenFile} {
 		b, e := privateFile(path, 4096)
-		if e != nil || len(b) < 32 || bytes.IndexAny(b, "\r\n \t") >= 0 {
+		if e != nil || !validServiceToken(b) {
 			return nil, errors.New("service secret unavailable")
 		}
 		if name == "setup" {
@@ -64,8 +70,20 @@ func New(c Config) (*Service, error) {
 			s.tokens[name] = string(b)
 		}
 	}
+	if e = os.MkdirAll(filepath.Dir(c.DBPath), 0700); e != nil {
+		return nil, errors.New("storage unavailable")
+	}
+	s.owner, e = os.OpenFile(c.DBPath+".owner", os.O_CREATE|os.O_RDWR, 0600)
+	if e != nil {
+		return nil, errors.New("storage owner unavailable")
+	}
+	if e = unix.Flock(int(s.owner.Fd()), unix.LOCK_EX|unix.LOCK_NB); e != nil {
+		s.owner.Close()
+		return nil, errors.New("storage already owned")
+	}
 	s.db, e = openStore(c.DBPath)
 	if e != nil {
+		s.owner.Close()
 		return nil, errors.New("storage unavailable")
 	}
 	var sentinel []byte
@@ -84,6 +102,7 @@ func New(c Config) (*Service, error) {
 	}
 	if e != nil {
 		s.db.Close()
+		s.owner.Close()
 		return nil, errors.New("state key rejected")
 	}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -98,6 +117,7 @@ func New(c Config) (*Service, error) {
 	}
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		s.db.Close()
+		s.owner.Close()
 		s.cancel()
 		return nil, errors.New("retained snapshot invalid")
 	}
@@ -139,11 +159,16 @@ func (s *Service) cleanup(ctx context.Context) {
 }
 
 func (s *Service) Close() error {
-	s.StopAdmission()
-	s.wg.Wait()
-	s.client.CloseIdleConnections()
-	return s.db.Close()
+	s.closeOnce.Do(func() {
+		s.StopAdmission()
+		s.wg.Wait()
+		s.client.CloseIdleConnections()
+		s.closeErr = s.db.Close()
+		_ = s.owner.Close()
+	})
+	return s.closeErr
 }
+
 func (s *Service) StopAdmission() {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
@@ -320,4 +345,16 @@ func writeError(w http.ResponseWriter, e error) {
 		f = &fault{503, "storage_unavailable"}
 	}
 	write(w, f.status, map[string]any{"error": f.code})
+}
+
+func validServiceToken(b []byte) bool {
+	if len(b) < 32 || len(b) > 4096 {
+		return false
+	}
+	for _, c := range b {
+		if c < 33 || c > 126 {
+			return false
+		}
+	}
+	return true
 }

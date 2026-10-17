@@ -257,7 +257,7 @@ func (s *Service) catalogRead(w http.ResponseWriter, r *http.Request) error {
 	} else if len(p) >= 4 && p[0] == "tv" && p[2] == "seasons" {
 		n, e := strconv.ParseInt(p[1], 10, 64)
 		season, se := strconv.Atoi(p[3])
-		if e != nil || se != nil || n <= 0 || season < 0 {
+		if e != nil || se != nil || n <= 0 || season < 0 || season > 1000 {
 			return bad()
 		}
 		_ = s.queueRefresh(r.Context(), map[string]any{"kind": "season", "type": "tv", "id": n, "season": season})
@@ -293,7 +293,7 @@ func (s *Service) catalogRead(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	} else if len(p) == 1 && p[0] == "search" {
 		q := r.URL.Query().Get("q")
-		if len(q) == 0 || len(q) > 200 {
+		if len(q) == 0 || len(q) > 200 || strings.TrimSpace(q) == "" || strings.ContainsAny(q, "\x00\r\n") {
 			return bad()
 		}
 		offset, e := parseOffset(r)
@@ -316,7 +316,7 @@ func (s *Service) catalogRead(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	} else if len(p) == 1 && p[0] == "search-results" {
 		q := r.URL.Query().Get("q")
-		if len(q) == 0 || len(q) > 200 {
+		if len(q) == 0 || len(q) > 200 || strings.TrimSpace(q) == "" || strings.ContainsAny(q, "\x00\r\n") {
 			return bad()
 		}
 		rec, ok = s.record("search", q)

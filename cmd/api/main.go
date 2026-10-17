@@ -36,6 +36,7 @@ func run() error {
 	defer stop()
 	s.Start()
 	server := &http.Server{ErrorLog: log.New(io.Discard, "", 0), Handler: s.Handler(), ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 45 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+	defer server.Close()
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(api.LimitConnections(listener, 64)) }()
 	select {

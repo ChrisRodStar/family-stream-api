@@ -299,8 +299,16 @@ func (s *Service) playbackReply(w http.ResponseWriter, r *http.Request, p Playba
 	if e != nil {
 		return e
 	}
-	if revoked || exists != 1 || p.Ready.State != "active" {
+	if revoked || exists != 1 {
 		return &fault{410, "revoked"}
+	}
+	switch p.Ready.State {
+	case "revoked":
+		return &fault{410, "revoked"}
+	case "expired":
+		return &fault{410, "session_expired"}
+	case "draining":
+		return &fault{503, "draining"}
 	}
 	if e = validateReady(p.Ready); e != nil {
 		return e

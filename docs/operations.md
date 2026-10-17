@@ -41,7 +41,7 @@ IDs for catalog handles/provider isolation/relay ownership.
 
 SQLite schema v1 migrates transactionally, refuses newer schemas, enables WAL,
 FULL synchronous commits, foreign keys and a three-second busy bound. Files are
-0600, newly created directories 0700. Run one API process per database. Personal
+0600, newly created directories 0700. A retained advisory file lock enforces one API process per database; process exit releases ownership. Personal
 state and retained artwork survive process restart. A separate AES-256-GCM key
 protects pending provider selections/control payloads, with per-row associated
 data and random nonces. A persistent authenticated sentinel rejects a wrong key
