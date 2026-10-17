@@ -1,17 +1,42 @@
 # Family Stream API
 
-Go client-facing API for web and iOS. Own authentication, profiles, personal libraries, watch history/progress, and playback coordination. Expose one public contract with multiple functional routes through the private Tailscale address. Catalog, providers, and relay use private, versioned contracts.
+Runnable Go public API for the independent Family Stream services. Owns household
+accounts/sessions, profiles/onboarding/preferences, watchlists/favorites, measured
+viewing/progress, durable catalog/artwork snapshots, recommendation-input
+synchronization and provider-to-relay playback coordination.
 
-## Data and playback boundaries
+The public client contract is `/api/v1`; media uses authorized same-origin
+`/stream/*` URLs served directly by the Rust relay. Known-ID playback never waits
+for the catalog. Cached browsing/artwork and household state survive API restart.
+Private Selection payloads retain provider order and are encrypted during pending
+orchestration; no upstream media URL or raw metadata reaches public clients.
 
-Keep household state in API-owned persistent storage. Use targeted resume/progress lookups rather than retrieving the entire library for one title. Keep session cleanup out of the frequent progress-update path; batch or schedule maintenance.
+- [Public routes and retry semantics](docs/api.md)
+- [OpenAPI](contracts/openapi.json)
+- [Configuration, limits, backup and recovery](docs/operations.md)
+- [Verification and evidence boundaries](docs/verification.md)
 
-Read catalog data through the catalog contract and retain a last-known-good read snapshot so cached browsing survives a catalog process outage. Do not open the catalog's SQLite file. Identify titles by media type and TMDB ID, retain external IDs, and send known identifiers and episode coordinates in provider requests without requiring a fresh catalog call for playback.
+```sh
+go build -o .local/api ./cmd/api
+.local/api /private/api.json
+```
 
-Authorize playback, request candidate sources, establish relay session/source state, and return an authorized `/stream/*` URL. The relay validates authorization and serves media directly through Tailscale Serve. Do not proxy segments through the API process or expose provider URLs to clients. Define recoverable session state and token expiry/renewal in the contracts.
+Provision private configuration/key files as documented; no credentials are
+bundled. Default checks are offline and credential-free:
 
-## Deployment
+```sh
+gofmt -l cmd internal
+go vet ./...
+go test -race -count=1 ./...
+go build -o .local/api ./cmd/api
+```
 
-Package the API with independently built React/Vite assets in the application container; the API serves both the client routes and static assets. Keep web release activation separate from API process replacement. Application egress stays outside Mullvad. Provider/relay source egress belongs to the streaming container's VPN policy.
+The explicit `python3 tools/production_listeners.py` integration check uses sibling
+provider/relay source and Go/Rust tools. It runs production HTTP/control/stream
+listeners with synthetic adapter/probe/network boundaries in a disposable relay
+source copy; it neither edits siblings nor uses live providers/Mullvad. See the
+verification document for exact evidence and remaining live-playback gaps.
 
-This project is a documentation scaffold. Implement against the agreed identifiers and proven internal contracts. Tests, builds, benchmarks, and deployments require an explicit user request.
+Development remains local on the Mac. Six repositories and the three-container
+architecture remain independent. Clients, deployment, Mello/device operation,
+container supervision and new live playback traffic are outside this delivery.

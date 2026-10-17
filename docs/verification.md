@@ -1,0 +1,52 @@
+# Verification and delivery evidence
+
+Baselines inspected on 2026-10-17: catalog
+`3bb11147ba733acc64ea5c9de1592b8e61a6d89c`, providers
+`dac13b74b16cb06c6934a639f8908e30d9d17609`, relay
+`c8fe6dcc74287cef0f575a949f0dd860c4e22a4c`. Sibling working trees were clean and
+remain unchanged. The reference controller/profile/library/progress code and
+catalog recommendation behavior were inspected without modification.
+
+Default verification uses Go tests with synthetic loopback HTTP servers and
+private temporary SQLite/key/configuration files. No credentials, external
+provider traffic, VPN attestation or paid calls are required. Coverage includes
+account setup/login/password changes, unauthorized/cross-account access,
+profile/library persistence through restart, cached artwork/metadata/exact specials,
+malformed/interrupted/invalid snapshot preservation, recomputed freshness,
+known-ID playback without catalog access, explicit cross-ID translation,
+Ed25519 signature/auth-revision correctness, create idempotency, lost mutation
+reply followed by GET/restart/retry, backup exhaustion followed by refresh,
+revocation and catalog deletion outboxes, duplicate/concurrent/seek progress,
+wrong encryption key and newer schema rejection, and JSON/CSRF bounds.
+
+The separately invoked `python3 tools/production_listeners.py` builds race-enabled
+Go API/provider test binaries and runs a Rust fixture in a disposable copy of the
+relay source, leaving sibling checkouts unchanged. It runs the production provider
+HTTP server and four-provider coordinator with synthetic adapters/probe observations,
+and production relay control/stream listeners, verifier, encrypted SQLite store,
+HLS processing and MP4 ranges. The existing cfg(test) resolver/dial points to a
+synthetic origin; a test-owned synthetic guard freshness clock supplies the existing
+epoch. No production guard/destination exception is introduced.
+
+Both HLS (including independent audio/subtitle manifest associations) and MP4
+passes exercise API-owned selection import, grants accepted by the actual relay,
+provider process stop/join while streaming continues, API reopen and persistent
+session recovery, actual relay store stop/join/reopen on the same encrypted
+SQLite/key set with fresh HTTP listeners, explicit ordered backup activation,
+uncached refresh, renewal and revocation of the original grant. Returned switches
+require player reload/resume. Scoped upstream authorization reaches the synthetic
+origin; relay control credentials/playback grants do not. Owned provider children,
+HTTP listeners, store and network tasks are stopped/joined.
+
+These are synthetic protocol/process tests. They do not establish native-provider
+resolution, real-source byte availability, media decoding, rendered subtitles,
+spoken language, player timeline restoration, device playback, deployment or VPN
+routing. The prior ended live allowance is neither opened nor reset. The relay's
+existing live-playback matrix remains open. Clients and Mello deployment are out
+of scope.
+
+Final-head formatting, vet, race, build, process-smoke, dependency audit and
+manual Greptile review results are recorded in the delivery PR/report. The explicit
+cross-language integration requires the sibling service sources and cached Go/Rust
+dependencies; default GitHub CI uses only this repository and stays offline with
+respect to providers/media.
