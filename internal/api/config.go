@@ -12,20 +12,21 @@ import (
 )
 
 type Config struct {
-	Listen            string `json:"listen"`
-	DBPath            string `json:"db_path"`
-	Origin            string `json:"origin"`
-	CatalogURL        string `json:"catalog_url"`
-	ProviderURL       string `json:"provider_url"`
-	RelayURL          string `json:"relay_url"`
-	CatalogTokenFile  string `json:"catalog_token_file"`
-	ProviderTokenFile string `json:"provider_token_file"`
-	RelayTokenFile    string `json:"relay_token_file"`
-	SetupTokenFile    string `json:"setup_token_file"`
-	SigningKeyFile    string `json:"signing_key_file"`
-	EncryptionKeyFile string `json:"encryption_key_file"`
-	KID               string `json:"kid"`
-	WebDir            string `json:"web_dir,omitempty"`
+	TrustedPrivateIPs []string `json:"trusted_private_ips,omitempty"`
+	Listen            string   `json:"listen"`
+	DBPath            string   `json:"db_path"`
+	Origin            string   `json:"origin"`
+	CatalogURL        string   `json:"catalog_url"`
+	ProviderURL       string   `json:"provider_url"`
+	RelayURL          string   `json:"relay_url"`
+	CatalogTokenFile  string   `json:"catalog_token_file"`
+	ProviderTokenFile string   `json:"provider_token_file"`
+	RelayTokenFile    string   `json:"relay_token_file"`
+	SetupTokenFile    string   `json:"setup_token_file"`
+	SigningKeyFile    string   `json:"signing_key_file"`
+	EncryptionKeyFile string   `json:"encryption_key_file"`
+	KID               string   `json:"kid"`
+	WebDir            string   `json:"web_dir,omitempty"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -41,14 +42,14 @@ func LoadConfig(path string) (Config, error) {
 		c.Listen = "127.0.0.1:8090"
 	}
 	host, port, e := net.SplitHostPort(c.Listen)
-	if e != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() || port == "0" {
+	if e != nil || net.ParseIP(host) == nil || !c.trustedIP(net.ParseIP(host)) || port == "0" {
 		return c, errors.New("invalid listen")
 	}
 	if c.DBPath == "" || !safeID(c.KID) {
 		return c, errors.New("missing storage or kid")
 	}
 	for _, v := range []string{c.CatalogURL, c.ProviderURL, c.RelayURL} {
-		if e = privateURL(v); e != nil {
+		if e = c.privateURL(v); e != nil {
 			return c, e
 		}
 	}
@@ -66,10 +67,28 @@ func LoadConfig(path string) (Config, error) {
 	}
 	return c, nil
 }
-func privateURL(s string) error {
+func privateURL(s string) error { return (Config{}).privateURL(s) }
+func (c Config) trustedIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	if !ip.IsPrivate() {
+		return false
+	}
+	for _, allowed := range c.TrustedPrivateIPs {
+		if parsed := net.ParseIP(allowed); parsed != nil && parsed.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+func (c Config) privateURL(s string) error {
 	u, e := url.Parse(s)
-	if e != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || !net.ParseIP(u.Hostname()).IsLoopback() || u.Port() == "" {
-		return errors.New("private service must use literal loopback and port")
+	if e != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || !c.trustedIP(net.ParseIP(u.Hostname())) || u.Port() == "" {
+		return errors.New("private service must use explicitly trusted literal IP and port")
 	}
 	return nil
 }

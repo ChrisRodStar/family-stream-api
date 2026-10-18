@@ -99,3 +99,10 @@ fail startup without deleting/resetting data. There is no automatic corruption
 repair, password recovery backdoor, destructive eviction or distributed controller.
 
 On upgrade, the API removes image payloads from its retained snapshot and vacuums/checkpoints SQLite to reclaim their storage. Authentication, profiles, libraries and playback state are preserved. Legacy image routes issue redirects; no API image download or image-byte persistence is performed.
+
+For isolated same-host container deployment, `trusted_private_ips` explicitly
+allowlists literal RFC1918 listener/service addresses in addition to loopback.
+Hostnames, wildcard/public binds and redirects remain rejected. Keep these
+addresses on the operations-owned Docker bridge, require existing per-service
+bearers, and publish only API/web on host loopback. Control traffic leaving this
+isolated host network requires an authenticated encrypted channel.
