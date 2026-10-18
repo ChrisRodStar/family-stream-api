@@ -17,7 +17,8 @@ Configuration is strict JSON with these required fields:
 | `provider_url` | Private literal loopback URL, e.g. `http://127.0.0.1:8093` |
 | `relay_url` | Private control URL, e.g. `http://127.0.0.1:8094` |
 | `catalog_token_file`, `provider_token_file`, `relay_token_file` | Separate 32–4096-byte bearer files without whitespace/newline |
-| `setup_token_file` | Random 32+-byte one-time household bootstrap credential; ignored after first account exists |
+| `household_account_id` | Optional explicit legacy storage owner; normally reuse the sole existing owner automatically |
+| `setup_token_file` | Deprecated and ignored; retained only for config compatibility |
 | `signing_key_file` | Ed25519 PKCS#8 DER or PEM, separately provisioned to the relay as a public key |
 | `encryption_key_file` | Exactly 32 raw random bytes, retained independently of database backups |
 | `kid` | Relay-allowlisted signing key identifier |
@@ -31,13 +32,17 @@ directly to that stream listener. Private control stays unexposed. This local
 implementation requires loopback private endpoints; container/private-channel
 packaging remains future deployment work under the three-container architecture.
 
-The API loads no secrets from command arguments. Provision bootstrap credentials
-and keys using the operator's secure file flow, then send the first setup password
-in a private HTTP body. Never paste tokens/URLs into shell history or commit configs.
-Passwords use salted Argon2id (32 MiB, two passes, parallelism two); session bearer
-values are random 192-bit tokens stored only as SHA-256 hashes. Account password
-change invalidates all login sessions. Profiles use independent random 192-bit
-IDs for catalog handles/provider isolation/relay ownership.
+Household clients do not sign in. Startup reuses a pinned owner or the sole legacy
+account, retaining all profile IDs and personal data. Fresh storage automatically
+creates an internal owner with no usable login credentials. Multiple legacy owners
+require explicit `household_account_id`; an unknown configured owner fails startup.
+The configured public origin and cross-site mutation protection remain enforced.
+Keep the API reachable only over the private family network. Internal service
+bearers and relay signing/state-encryption keys are still required.
+
+The deprecated `setup_token_file` field is accepted but never opened. Existing
+bootstrap/key files and legacy password/session rows can be retained privately for
+rollback; no client can log in, create accounts or change passwords through them.
 
 SQLite schema v1 migrates transactionally, refuses newer schemas, enables WAL,
 FULL synchronous commits, foreign keys and a three-second busy bound. Files are
@@ -62,7 +67,7 @@ have 30 seconds; catalog updates three seconds; provider resolution 35 seconds;
 relay control 12 seconds, all clipped to request/shutdown contexts. Public HTTP
 has 64 accepted connections, 32 admitted handlers, 8 KiB headers, 3-second header,
 5-second read, 45-second write and 30-second idle limits. Playback control uses
-immediate bounded admission; expensive password work has two slots. Account,
+immediate bounded admission; Household,
 profile, list, snapshot, refresh-queue and playback-record bounds reject new work
 rather than evicting useful personal state. Current playback-record cap is 4096
 including the seven-day retry retention window. Each playback keeps at most 256

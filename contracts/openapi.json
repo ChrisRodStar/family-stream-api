@@ -3,290 +3,14 @@
   "info": {
     "title": "Family Stream public API",
     "version": "api.v1",
-    "description": "One web/iOS contract. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."
+    "description": "Private-network household access with no account login or password. Profiles share one retained household. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."
   },
   "paths": {
-    "/api/v1/auth/setup": {
-      "post": {
-        "summary": "Create authenticated account session",
-        "operationId": "post_api_v1_auth_setup",
-        "security": [],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Stable redacted error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Setup"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/auth/login": {
-      "post": {
-        "summary": "Create authenticated account session",
-        "operationId": "post_api_v1_auth_login",
-        "security": [],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Session"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Stable redacted error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Credentials"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/auth/me": {
-      "get": {
-        "summary": "Current account",
-        "operationId": "get_api_v1_auth_me",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "account_id": {
-                      "type": "string"
-                    },
-                    "admin": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "account_id",
-                    "admin"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Stable redacted error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/auth/logout": {
-      "post": {
-        "summary": "Revoke current session",
-        "operationId": "post_api_v1_auth_logout",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Success"
-          },
-          "default": {
-            "description": "Stable redacted error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/auth/password": {
-      "put": {
-        "summary": "Replace password and revoke all account sessions",
-        "operationId": "put_api_v1_auth_password",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Success"
-          },
-          "default": {
-            "description": "Stable redacted error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "current_password": {
-                    "type": "string"
-                  },
-                  "new_password": {
-                    "type": "string",
-                    "minLength": 12,
-                    "maxLength": 256
-                  }
-                },
-                "required": [
-                  "current_password",
-                  "new_password"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/accounts": {
-      "post": {
-        "summary": "Administrator creates a household account",
-        "operationId": "post_api_v1_accounts",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "username": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "username"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Stable redacted error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Credentials"
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/profiles": {
       "get": {
         "summary": "List owned profiles",
         "operationId": "get_api_v1_profiles",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -325,14 +49,7 @@
       "post": {
         "summary": "Create owned profile",
         "operationId": "post_api_v1_profiles",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "201": {
             "description": "Success",
@@ -371,14 +88,7 @@
       "get": {
         "summary": "Read owned profile",
         "operationId": "get_api_v1_profiles_profile",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -415,14 +125,7 @@
       "put": {
         "summary": "Edit name/color",
         "operationId": "put_api_v1_profiles_profile",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -469,14 +172,7 @@
       "delete": {
         "summary": "Delete personal state and persist private-service cleanup",
         "operationId": "delete_api_v1_profiles_profile",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Success"
@@ -508,14 +204,7 @@
       "put": {
         "summary": "Persist onboarding and recommendation preferences",
         "operationId": "put_api_v1_profiles_profile_preferences",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -564,14 +253,7 @@
       "post": {
         "summary": "Record today's UTC activity",
         "operationId": "post_api_v1_profiles_profile_activity",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Success"
@@ -603,14 +285,7 @@
       "get": {
         "summary": "Read saved titles",
         "operationId": "get_api_v1_profiles_profile_library",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -661,14 +336,7 @@
       "put": {
         "summary": "Save/remove known title",
         "operationId": "put_api_v1_profiles_profile_library_type_id",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Success"
@@ -719,14 +387,7 @@
       "delete": {
         "summary": "Save/remove known title",
         "operationId": "delete_api_v1_profiles_profile_library_type_id",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Success"
@@ -779,14 +440,7 @@
       "get": {
         "summary": "Read saved titles",
         "operationId": "get_api_v1_profiles_profile_favorites",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -837,14 +491,7 @@
       "put": {
         "summary": "Save/remove known title",
         "operationId": "put_api_v1_profiles_profile_favorites_type_id",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Success"
@@ -895,14 +542,7 @@
       "delete": {
         "summary": "Save/remove known title",
         "operationId": "delete_api_v1_profiles_profile_favorites_type_id",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Success"
@@ -955,14 +595,7 @@
       "get": {
         "summary": "Read persistent viewing history",
         "operationId": "get_api_v1_profiles_profile_history",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1031,14 +664,7 @@
       "get": {
         "summary": "Targeted exact title/episode resume lookup",
         "operationId": "get_api_v1_profiles_profile_resume",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1116,14 +742,7 @@
       "put": {
         "summary": "Update cumulative measured viewing idempotently",
         "operationId": "put_api_v1_profiles_profile_progress",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1172,14 +791,7 @@
       "get": {
         "summary": "Owned Home view and general shelves",
         "operationId": "get_api_v1_profiles_profile_home",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1241,14 +853,7 @@
       "get": {
         "summary": "Owned cached recommendation view",
         "operationId": "get_api_v1_profiles_profile_recommendations",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1300,14 +905,7 @@
       "post": {
         "summary": "Resolve and import one provider Selection",
         "operationId": "post_api_v1_profiles_profile_playback",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1365,14 +963,7 @@
       "get": {
         "summary": "Reconcile persisted playback and issue grant",
         "operationId": "get_api_v1_profiles_profile_playback_playback",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1417,14 +1008,7 @@
       "delete": {
         "summary": "Persist revocation and revoke relay session",
         "operationId": "delete_api_v1_profiles_profile_playback_playback",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "204": {
             "description": "Success"
@@ -1464,14 +1048,7 @@
       "post": {
         "summary": "Explicit playback renew",
         "operationId": "post_api_v1_profiles_profile_playback_playback_renew",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1537,14 +1114,7 @@
       "post": {
         "summary": "Explicit playback backup",
         "operationId": "post_api_v1_profiles_profile_playback_playback_backup",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1610,14 +1180,7 @@
       "post": {
         "summary": "Explicit playback refresh",
         "operationId": "post_api_v1_profiles_profile_playback_playback_refresh",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1683,14 +1246,7 @@
       "get": {
         "summary": "Retained general shelves",
         "operationId": "get_api_v1_browse",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1731,14 +1287,7 @@
       "get": {
         "summary": "Search cached titles",
         "operationId": "get_api_v1_search",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1813,14 +1362,7 @@
       "get": {
         "summary": "Retained exact-query discovery result",
         "operationId": "get_api_v1_search-results",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1859,14 +1401,7 @@
       "get": {
         "summary": "Retained title/season envelope",
         "operationId": "get_api_v1_titles_type_id",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1918,14 +1453,7 @@
       "get": {
         "summary": "Retained title/season envelope",
         "operationId": "get_api_v1_tv_id_seasons_season",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -1974,14 +1502,7 @@
       "get": {
         "summary": "Exact retained episode",
         "operationId": "get_api_v1_tv_id_seasons_season_episodes_episode",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -2039,14 +1560,7 @@
       "get": {
         "summary": "Legacy artwork reference redirects to TMDB image CDN",
         "operationId": "get_api_v1_artwork_size_filename",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "302": {
             "description": "Success",
@@ -2093,14 +1607,7 @@
       "head": {
         "summary": "Legacy artwork reference redirects to TMDB image CDN",
         "operationId": "head_api_v1_artwork_size_filename",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "302": {
             "description": "Success",
@@ -2149,14 +1656,7 @@
       "get": {
         "summary": "Redacted retained-state diagnostics",
         "operationId": "get_api_v1_status",
-        "security": [
-          {
-            "SessionBearer": []
-          },
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [],
         "responses": {
           "200": {
             "description": "Success",
@@ -2414,69 +1914,6 @@
           "color",
           "id",
           "preferences"
-        ],
-        "additionalProperties": false
-      },
-      "Credentials": {
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,64}$"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          }
-        },
-        "required": [
-          "username",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "Setup": {
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,64}$"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 12,
-            "maxLength": 256
-          },
-          "setup_token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "username",
-          "password",
-          "setup_token"
-        ],
-        "additionalProperties": false
-      },
-      "Session": {
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string"
-          },
-          "account_id": {
-            "type": "string"
-          },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "token",
-          "account_id",
-          "expires_at"
         ],
         "additionalProperties": false
       },
@@ -3096,17 +2533,6 @@
           "pending_profile_deletions"
         ],
         "additionalProperties": false
-      }
-    },
-    "securitySchemes": {
-      "SessionBearer": {
-        "type": "http",
-        "scheme": "bearer"
-      },
-      "SessionCookie": {
-        "type": "apiKey",
-        "in": "cookie",
-        "name": "fs_session"
       }
     }
   }

@@ -5,39 +5,35 @@ playback/progress fields. The machine-readable contract is
 [`contracts/openapi.json`](../contracts/openapi.json). Web and iOS must use this
 same contract. No client code or deployment is included here.
 
-All routes require an account session except setup/login and loopback health.
-Authenticate with `Authorization: Bearer <token>` or the HttpOnly Strict SameSite
-`fs_session` cookie. HTTPS origins issue Secure cookies. Browser mutation requests
+Public routes are available to everyone who can reach the private household
+origin. No account login, password, cookie or bearer is required. The deployment
+keeps the API behind private Tailscale Serve and host-loopback published ports.
+Profiles organize family viewing data; they are not access-control boundaries.
+Private service bearers and signed relay grants remain separate and mandatory.
+Browser mutation requests
 must use the configured origin; cross-site Fetch Metadata is rejected. Native
 clients can omit Origin. JSON mutation bodies require `application/json`, exact
 field spelling, a single JSON value, and no duplicate/case-alias fields. Request
 bodies are capped at 32 KiB, nesting at 32. Errors are `{"error":"stable_code"}`.
 No private-service error body is forwarded.
 
-## Accounts and profiles
+## Household and profiles
 
 | Method and route | Request / result |
 |---|---|
-| POST `/auth/setup` | First account only: `username`, `password`, `setup_token`; returns session token, expiry, account ID; administrator |
-| POST `/auth/login` | `username`, `password`; returns session token, expiry, account ID |
-| GET `/auth/me` | Account ID and admin flag |
-| POST `/auth/logout` | Revokes current session; 204 |
-| PUT `/auth/password` | `current_password`, `new_password`; changes password and invalidates all account sessions; 204 |
-| POST `/accounts` | Admin only; `username`, `password`; creates a non-admin account |
-| GET, POST `/profiles` | List owned profiles / create with `name`, `color` |
-| GET, PUT, DELETE `/profiles/{profile}` | Read / replace name and color / delete owned profile |
+| GET, POST `/profiles` | List family profiles / create with `name`, `color` |
+| GET, PUT, DELETE `/profiles/{profile}` | Read / replace name and color / delete profile |
 | PUT `/profiles/{profile}/preferences` | `completed`, `format: both\|movie\|tv`, `genres` |
-| POST `/profiles/{profile}/activity` | Record today's UTC activity; 204, no body required |
-| GET `/status` | Redacted snapshot state and aggregate pending deletion/revocation counts |
+| POST `/profiles/{profile}/activity` | Record today's UTC activity; 204 |
+| GET `/status` | Redacted retained-state diagnostics |
 
-Each account owns its profiles. An administrator can create household accounts
-but cannot read another account's profiles. Cross-account IDs return the same 404
-as absent IDs. Profile names are at most 80 bytes, colors 1–32 bytes, usernames
-ASCII alphanumeric/underscore/hyphen (1–64, case-insensitive). Passwords are 12–256
-bytes. There are at most 32 accounts, 32 concurrent retained login sessions per
-account and 128 profiles total. Login admission is capped at 20 attempts/minute
-per process, with two concurrent Argon2id operations; this intentionally favors a
-small private household. Restart resets throttling, never authentication state.
+Startup retains the existing storage owner and its profile IDs. A fresh database
+initializes one internal household owner automatically. The owner is pinned in
+settings for subsequent starts. If multiple legacy accounts exist, startup requires
+`household_account_id` rather than guessing or exposing their combined data.
+Legacy account/password/session rows remain private for compatible rollback but
+are not used for client access. `/auth/*` and `/accounts` return 404. Names are
+at most 80 bytes, colors 1–32 bytes, and the storage bound is 128 profiles total.
 
 Preferences accept action, comedy, drama, crime, scifi, animation, documentary,
 horror and legacy family (no duplicates). Completion is persisted onboarding

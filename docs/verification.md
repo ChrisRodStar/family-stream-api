@@ -1,3 +1,9 @@
+Current household-access change: fixtures now open profiles without a client
+session and retain the storage owner through restart. These updated cases have
+not been run under the current no-tests instruction. Production packaging builds
+are separate from runtime/manual acceptance. Earlier evidence below predates the
+removal of account sign-in and does not validate the new access behavior.
+
 # Verification and delivery evidence
 
 Baselines inspected on 2026-10-17: catalog
@@ -10,7 +16,7 @@ catalog recommendation behavior were inspected without modification.
 Default verification uses Go tests with synthetic loopback HTTP servers and
 private temporary SQLite/key/configuration files. No credentials, external
 provider traffic, VPN attestation or paid calls are required. Coverage includes
-account setup/login/password changes, unauthorized/cross-account access,
+private-network household access and stable storage-owner/profile selection,
 profile/library persistence through restart, cached artwork/metadata/exact specials,
 malformed/interrupted/invalid snapshot preservation, recomputed freshness,
 known-ID playback without catalog access, explicit cross-ID translation,

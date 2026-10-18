@@ -1,7 +1,7 @@
 # Family Stream API
 
 Runnable Go public API for the independent Family Stream services. Owns household
-accounts/sessions, profiles/onboarding/preferences, watchlists/favorites, measured
+profiles/onboarding/preferences, watchlists/favorites, measured
 viewing/progress, durable catalog/artwork snapshots, recommendation-input
 synchronization and provider-to-relay playback coordination.
 
@@ -36,6 +36,10 @@ provider/relay source and Go/Rust tools. It runs production HTTP/control/stream
 listeners with synthetic adapter/probe/network boundaries in a disposable relay
 source copy; it neither edits siblings nor uses live providers/Mullvad. See the
 verification document for exact evidence and remaining live-playback gaps.
+
+Household access relies on the private network. There is no app login, password,
+setup key, session cookie or account-management endpoint. Existing profile owners
+and all personal state are retained. See operations for legacy owner selection.
 
 Development remains local on the Mac. Six repositories and the three-container
 architecture remain independent. Clients, deployment, Mello/device operation,

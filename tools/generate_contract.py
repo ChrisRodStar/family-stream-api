@@ -23,9 +23,6 @@ S["Target"]=obj(target,["type","id"])
 S["Preferences"]=obj({"completed":boolean,"format":enum("both","movie","tv"),"genres":array(enum("action","comedy","drama","crime","scifi","animation","documentary","horror","family"))})
 S["ProfileEdit"]=obj({"name":{"type":"string","minLength":1,"maxLength":80},"color":{"type":"string","minLength":1,"maxLength":32}})
 S["Profile"]=obj(dict(S["ProfileEdit"]["properties"],id=string,preferences=ref("Preferences")))
-S["Credentials"]=obj({"username":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$"},"password":{"type":"string","minLength":12,"maxLength":256}})
-S["Setup"]=obj(dict(S["Credentials"]["properties"],setup_token=string))
-S["Session"]=obj({"token":string,"account_id":string,"expires_at":timestamp})
 S["Device"]=obj({"formats":array(enum("hls","mp4")),"codecs":array(string),"max_height":{"type":"integer","minimum":0},"allow_unknown_codecs":boolean,"allow_unknown_resolution":boolean,"supports_encrypted_hls":boolean},["formats"])
 S["PlaybackPreferences"]=obj({"audio_languages":array(string),"subtitle_languages":array(string),"require_audio":boolean,"require_subtitles":boolean,"max_height":{"type":"integer","minimum":0}},[])
 S["PlaybackRequest"]=obj(dict(target,imdb_id={"type":"string","pattern":"^tt[0-9]{1,20}$"},mal_id=positive,device=ref("Device"),preferences=ref("PlaybackPreferences")),["type","id"])
@@ -55,17 +52,12 @@ def op(method,path,summary,response=None,body=None,status=200,auth=True,idem=Fal
             parameters.append({"name":name,"in":"path","required":True,"schema":schema})
     if idem: parameters.append({"name":"Idempotency-Key","in":"header","required":True,"schema":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,128}$"}})
     for name,schema,required in query or []:parameters.append({"name":name,"in":"query","required":required,"schema":schema})
-    operation={"summary":summary,"operationId":method+"_"+path.strip("/").replace("/","_").replace("{","").replace("}",""),"security":[{"SessionBearer":[]},{"SessionCookie":[]}] if auth else [],"responses":{str(status):{"description":"Success"},"default":{"description":"Stable redacted error","content":{"application/json":{"schema":ref("Error")}}}}}
+    operation={"summary":summary,"operationId":method+"_"+path.strip("/").replace("/","_").replace("{","").replace("}",""),"security":[],"responses":{str(status):{"description":"Success"},"default":{"description":"Stable redacted error","content":{"application/json":{"schema":ref("Error")}}}}}
     if response is not None:operation["responses"][str(status)]["content"]={"application/json":{"schema":response}}
     if parameters:operation["parameters"]=parameters
     if body:operation["requestBody"]={"required":True,"content":{"application/json":{"schema":body}}}
     paths.setdefault(path,{})[method]=operation
 base="/api/v1"
-for route,request in [("setup","Setup"),("login","Credentials")]:op("post",base+"/auth/"+route,"Create authenticated account session",ref("Session"),ref(request),auth=False)
-op("get",base+"/auth/me","Current account",obj({"account_id":string,"admin":boolean}))
-op("post",base+"/auth/logout","Revoke current session",status=204)
-op("put",base+"/auth/password","Replace password and revoke all account sessions",body=obj({"current_password":string,"new_password":{"type":"string","minLength":12,"maxLength":256}}),status=204)
-op("post",base+"/accounts","Administrator creates a household account",obj({"id":string,"username":string}),ref("Credentials"),201)
 op("get",base+"/profiles","List owned profiles",obj({"profiles":array(ref("Profile"))}))
 op("post",base+"/profiles","Create owned profile",ref("Profile"),ref("ProfileEdit"),201)
 p=base+"/profiles/{profile}"
@@ -95,5 +87,5 @@ for method in ("get","head"):
     paths[base+"/artwork/{size}/{filename}"][method]["responses"]["302"]["headers"]={"Location":{"schema":{"type":"string","format":"uri"},"description":"Public image.tmdb.org URL. Image payloads are fetched and cached by the client."}}
 op("get",base+"/status","Redacted retained-state diagnostics",ref("Status"))
 for health in ("livez","readyz"):op("get","/health/"+health,"API lifecycle/storage health",obj({"version":{"const":"api.v1"},"status":string}),auth=False)
-doc={"openapi":"3.1.0","info":{"title":"Family Stream public API","version":"api.v1","description":"One web/iOS contract. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."},"paths":paths,"components":{"schemas":S,"securitySchemes":{"SessionBearer":{"type":"http","scheme":"bearer"},"SessionCookie":{"type":"apiKey","in":"cookie","name":"fs_session"}}}}
+doc={"openapi":"3.1.0","info":{"title":"Family Stream public API","version":"api.v1","description":"Private-network household access with no account login or password. Profiles share one retained household. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."},"paths":paths,"components":{"schemas":S}}
 (Path(__file__).resolve().parents[1]/"contracts/openapi.json").write_text(json.dumps(doc,indent=2)+"\n")

@@ -12,21 +12,22 @@ import (
 )
 
 type Config struct {
-	TrustedPrivateIPs []string `json:"trusted_private_ips,omitempty"`
-	Listen            string   `json:"listen"`
-	DBPath            string   `json:"db_path"`
-	Origin            string   `json:"origin"`
-	CatalogURL        string   `json:"catalog_url"`
-	ProviderURL       string   `json:"provider_url"`
-	RelayURL          string   `json:"relay_url"`
-	CatalogTokenFile  string   `json:"catalog_token_file"`
-	ProviderTokenFile string   `json:"provider_token_file"`
-	RelayTokenFile    string   `json:"relay_token_file"`
-	SetupTokenFile    string   `json:"setup_token_file"`
-	SigningKeyFile    string   `json:"signing_key_file"`
-	EncryptionKeyFile string   `json:"encryption_key_file"`
-	KID               string   `json:"kid"`
-	WebDir            string   `json:"web_dir,omitempty"`
+	HouseholdAccountID string   `json:"household_account_id,omitempty"`
+	TrustedPrivateIPs  []string `json:"trusted_private_ips,omitempty"`
+	Listen             string   `json:"listen"`
+	DBPath             string   `json:"db_path"`
+	Origin             string   `json:"origin"`
+	CatalogURL         string   `json:"catalog_url"`
+	ProviderURL        string   `json:"provider_url"`
+	RelayURL           string   `json:"relay_url"`
+	CatalogTokenFile   string   `json:"catalog_token_file"`
+	ProviderTokenFile  string   `json:"provider_token_file"`
+	RelayTokenFile     string   `json:"relay_token_file"`
+	SetupTokenFile     string   `json:"setup_token_file,omitempty"` // Deprecated configuration compatibility; never loaded.
+	SigningKeyFile     string   `json:"signing_key_file"`
+	EncryptionKeyFile  string   `json:"encryption_key_file"`
+	KID                string   `json:"kid"`
+	WebDir             string   `json:"web_dir,omitempty"`
 }
 
 func LoadConfig(path string) (Config, error) {

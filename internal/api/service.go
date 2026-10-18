@@ -23,32 +23,28 @@ import (
 )
 
 type Service struct {
-	owner         *os.File
-	closeOnce     sync.Once
-	closeErr      error
-	lifecycleMu   sync.Mutex
-	cfg           Config
-	db            *sql.DB
-	client        *http.Client
-	signer        ed25519.PrivateKey
-	encryption    []byte
-	tokens        map[string]string
-	setup         string
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	slots         chan struct{}
-	authSlots     chan struct{}
-	playMu        sync.Mutex
-	snapMu        sync.RWMutex
-	snapshot      Snapshot
-	stopping      atomic.Bool
-	syncMu        sync.Mutex
-	loginMu       sync.Mutex
-	loginAttempts int
-	loginReset    time.Time
-	refreshWake   chan struct{}
-	snapshotWake  chan struct{}
+	owner        *os.File
+	closeOnce    sync.Once
+	closeErr     error
+	lifecycleMu  sync.Mutex
+	cfg          Config
+	db           *sql.DB
+	client       *http.Client
+	signer       ed25519.PrivateKey
+	encryption   []byte
+	tokens       map[string]string
+	household    string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	slots        chan struct{}
+	playMu       sync.Mutex
+	snapMu       sync.RWMutex
+	snapshot     Snapshot
+	stopping     atomic.Bool
+	syncMu       sync.Mutex
+	refreshWake  chan struct{}
+	snapshotWake chan struct{}
 }
 
 func New(c Config) (*Service, error) {
@@ -60,19 +56,15 @@ func New(c Config) (*Service, error) {
 	if e != nil || len(key) != 32 {
 		return nil, errors.New("encryption key unavailable")
 	}
-	s := &Service{cfg: c, signer: signer, encryption: key, tokens: map[string]string{}, slots: make(chan struct{}, 32), authSlots: make(chan struct{}, 2)}
+	s := &Service{cfg: c, signer: signer, encryption: key, tokens: map[string]string{}, slots: make(chan struct{}, 32)}
 	s.refreshWake = make(chan struct{}, 1)
 	s.snapshotWake = make(chan struct{}, 1)
-	for name, path := range map[string]string{"catalog": c.CatalogTokenFile, "provider": c.ProviderTokenFile, "relay": c.RelayTokenFile, "setup": c.SetupTokenFile} {
+	for name, path := range map[string]string{"catalog": c.CatalogTokenFile, "provider": c.ProviderTokenFile, "relay": c.RelayTokenFile} {
 		b, e := privateFile(path, 4096)
 		if e != nil || !validServiceToken(b) {
 			return nil, errors.New("service secret unavailable")
 		}
-		if name == "setup" {
-			s.setup = string(b)
-		} else {
-			s.tokens[name] = string(b)
-		}
+		s.tokens[name] = string(b)
 	}
 	if e = os.MkdirAll(filepath.Dir(c.DBPath), 0700); e != nil {
 		return nil, errors.New("storage unavailable")
@@ -108,6 +100,12 @@ func New(c Config) (*Service, error) {
 		s.db.Close()
 		s.owner.Close()
 		return nil, errors.New("state key rejected")
+	}
+	s.household, e = s.selectHousehold(c.HouseholdAccountID)
+	if e != nil {
+		s.db.Close()
+		s.owner.Close()
+		return nil, e
 	}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	transport := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}).DialContext, MaxConnsPerHost: 4, MaxIdleConns: 8, MaxIdleConnsPerHost: 4, ResponseHeaderTimeout: 32 * time.Second, MaxResponseHeaderBytes: 16384, DisableCompression: true}

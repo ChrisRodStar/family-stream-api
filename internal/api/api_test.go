@@ -226,14 +226,9 @@ func (f *fixture) want(status int, method, path, token string, v any, key string
 	}
 	return b
 }
-func (f *fixture) setup() string {
-	b := f.want(200, "POST", "/api/v1/auth/setup", "", credentials{Username: "owner", Password: "test-password-1234", SetupToken: strings.Repeat("b", 32)}, "")
-	var v struct {
-		Token string `json:"token"`
-	}
-	_ = json.Unmarshal(b, &v)
-	return v.Token
-}
+
+// Household initialization belongs to service startup, with no client session.
+func (f *fixture) setup() string { return "" }
 func (f *fixture) profile(token string) Profile {
 	b := f.want(201, "POST", "/api/v1/profiles", token, map[string]string{"name": "Person", "color": "blue"}, "")
 	var p Profile
@@ -254,31 +249,25 @@ func (f *fixture) play(token, pid string, target any, key string) string {
 	}
 	return out.ID
 }
-func TestAuthenticationOwnershipAndRestart(t *testing.T) {
+func TestHouseholdAccessAndRestart(t *testing.T) {
 	f := newFixture(t)
-	f.want(401, "GET", "/api/v1/browse", "", nil, "")
-	token := f.setup()
-	p := f.profile(token)
-	f.want(409, "POST", "/api/v1/auth/setup", "", credentials{Username: "owner2", Password: "test-password-1234", SetupToken: strings.Repeat("b", 32)}, "")
-	f.want(201, "POST", "/api/v1/accounts", token, credentials{Username: "guest", Password: "test-password-guest"}, "")
-	b := f.want(200, "POST", "/api/v1/auth/login", "", credentials{Username: "guest", Password: "test-password-guest"}, "")
-	var v struct {
-		Token string `json:"token"`
+	f.want(200, "GET", "/api/v1/browse", "", nil, "")
+	p := f.profile("")
+	owner := f.s.household
+	for _, path := range []string{"/api/v1/auth/setup", "/api/v1/auth/login", "/api/v1/accounts"} {
+		f.want(404, "POST", path, "", nil, "")
 	}
-	_ = json.Unmarshal(b, &v)
-	for _, path := range []string{"", "/recommendations", "/home", "/library", "/history", "/resume?type=movie&id=7", "/playback/anything"} {
-		f.want(404, "GET", "/api/v1/profiles/"+p.ID+path, v.Token, nil, "")
-	}
-	f.want(403, "POST", "/api/v1/accounts", v.Token, credentials{Username: "third", Password: "test-password-third"}, "")
-	f.want(204, "PUT", "/api/v1/profiles/"+p.ID+"/library/movie/7", token, nil, "")
+	f.want(204, "PUT", "/api/v1/profiles/"+p.ID+"/library/movie/7", "", nil, "")
 	f.restart()
-	f.want(200, "GET", "/api/v1/profiles/"+p.ID, token, nil, "")
-	b = f.want(200, "GET", "/api/v1/profiles/"+p.ID+"/library", token, nil, "")
+	if f.s.household != owner {
+		t.Fatal("household owner changed")
+	}
+	f.want(200, "GET", "/api/v1/profiles/"+p.ID, "", nil, "")
+	b := f.want(200, "GET", "/api/v1/profiles/"+p.ID+"/library", "", nil, "")
 	if !bytes.Contains(b, []byte(`"id":7`)) {
 		t.Fatal("library lost")
 	}
-	f.want(204, "PUT", "/api/v1/auth/password", token, map[string]string{"current_password": "test-password-1234", "new_password": "changed-password-1234"}, "")
-	f.want(401, "GET", "/api/v1/profiles", token, nil, "")
+	f.want(404, "PUT", "/api/v1/auth/password", "", nil, "")
 }
 func (f *fixture) seedSnapshot(pid string) {
 	var b bytes.Buffer

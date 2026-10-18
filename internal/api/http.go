@@ -23,44 +23,16 @@ func (s *Service) route(w http.ResponseWriter, r *http.Request) error {
 		write(w, 200, map[string]any{"version": "api.v1", "status": "ready"})
 		return nil
 	}
-	if path == "/api/v1/auth/setup" && method == "POST" {
-		return s.account(w, r, "setup", true)
-	}
-	if path == "/api/v1/auth/login" && method == "POST" {
-		return s.account(w, r, "login", false)
+	if strings.HasPrefix(path, "/api/v1/auth/") || path == "/api/v1/accounts" {
+		return missing()
 	}
 	if !strings.HasPrefix(path, "/api/") && s.cfg.WebDir != "" && method == "GET" {
 		http.FileServer(http.Dir(s.cfg.WebDir)).ServeHTTP(w, r)
 		return nil
 	}
-	account, admin, e := s.authenticate(r)
-	if e != nil {
-		return e
-	}
+	account := s.household
 	if path == "/api/v1/status" && method == "GET" {
 		return s.status(w, r)
-	}
-	if path == "/api/v1/auth/logout" && method == "POST" {
-		_, e := s.db.ExecContext(r.Context(), "DELETE FROM sessions WHERE hash=?", hash(sessionToken(r)))
-		if e != nil {
-			return e
-		}
-		http.SetCookie(w, &http.Cookie{Name: "fs_session", Path: "/api/", MaxAge: -1, HttpOnly: true})
-		w.WriteHeader(204)
-		return nil
-	}
-	if path == "/api/v1/auth/me" && method == "GET" {
-		write(w, 200, map[string]any{"account_id": account, "admin": admin})
-		return nil
-	}
-	if path == "/api/v1/accounts" && method == "POST" {
-		if !admin {
-			return &fault{403, "forbidden"}
-		}
-		return s.account(w, r, "create", false)
-	}
-	if path == "/api/v1/auth/password" && method == "PUT" {
-		return s.changePassword(w, r, account)
 	}
 	if path == "/api/v1/profiles" {
 		return s.profiles(w, r, account)
