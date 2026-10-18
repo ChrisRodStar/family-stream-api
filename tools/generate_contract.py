@@ -91,8 +91,8 @@ op("get",base+"/search-results","Retained exact-query discovery result",ref("Rec
 for suffix in ("/titles/{type}/{id}","/tv/{id}/seasons/{season}"):op("get",base+suffix,"Retained title/season envelope",ref("Record"))
 op("get",base+"/tv/{id}/seasons/{season}/episodes/{episode}","Exact retained episode",ref("EpisodeReply"))
 for method in ("get","head"):
-    op(method,base+"/artwork/{size}/{filename}","Retained validated artwork")
-    paths[base+"/artwork/{size}/{filename}"][method]["responses"]["200"]["content"]={mime:{"schema":{"type":"string","format":"binary"}} for mime in ("image/jpeg","image/png","image/webp")}
+    op(method,base+"/artwork/{size}/{filename}","Legacy artwork reference redirects to TMDB image CDN",status=302)
+    paths[base+"/artwork/{size}/{filename}"][method]["responses"]["302"]["headers"]={"Location":{"schema":{"type":"string","format":"uri"},"description":"Public image.tmdb.org URL. Image payloads are fetched and cached by the client."}}
 op("get",base+"/status","Redacted retained-state diagnostics",ref("Status"))
 for health in ("livez","readyz"):op("get","/health/"+health,"API lifecycle/storage health",obj({"version":{"const":"api.v1"},"status":string}),auth=False)
 doc={"openapi":"3.1.0","info":{"title":"Family Stream public API","version":"api.v1","description":"One web/iOS contract. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."},"paths":paths,"components":{"schemas":S,"securitySchemes":{"SessionBearer":{"type":"http","scheme":"bearer"},"SessionCookie":{"type":"apiKey","in":"cookie","name":"fs_session"}}}}

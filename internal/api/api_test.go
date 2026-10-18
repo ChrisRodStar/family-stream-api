@@ -205,7 +205,9 @@ func (f *fixture) request(method, path, token string, v any, key string) (int, [
 	if key != "" {
 		r.Header.Set("Idempotency-Key", key)
 	}
-	response, e := f.server.Client().Do(r)
+	client := *f.server.Client()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, e := client.Do(r)
 	if e != nil {
 		f.t.Fatal(e)
 	}
@@ -306,7 +308,7 @@ func TestDurableSnapshotValidationAndOutages(t *testing.T) {
 			t.Fatal("bad snapshot accepted")
 		}
 		f.restart()
-		for _, path := range []string{"/titles/movie/7", "/titles/tv/7", "/tv/7/seasons/0/episodes/1", "/browse", "/search?q=Example", "/search-results?q=Example", "/artwork/w500/example.png"} {
+		for _, path := range []string{"/titles/movie/7", "/titles/tv/7", "/tv/7/seasons/0/episodes/1", "/browse", "/search?q=Example", "/search-results?q=Example"} {
 			b := f.want(200, "GET", "/api/v1"+path, token, nil, "")
 			if bytes.Contains(b, []byte("/internal/v1/")) {
 				t.Fatal("private path exposed")
@@ -335,7 +337,7 @@ func TestSnapshotRejectsPartialAndMalformedData(t *testing.T) {
 	f.mu.Unlock()
 	for _, mutate := range []func(*Snapshot){func(s *Snapshot) { s.Records = append(s.Records, s.Records[0]) }, func(s *Snapshot) {
 		s.Records[0].Data = marshal(map[string]any{"type": "movie", "id": 7, "poster": "https://secret.example/a"})
-	}, func(s *Snapshot) { s.Records[0].Revision = 2 }, func(s *Snapshot) { s.Records[5].Data = marshal(artwork{MIME: "image/png", Bytes: []byte("broken")}) }, func(s *Snapshot) { s.Version = "2" }, func(s *Snapshot) { s.Records = nil }, func(s *Snapshot) { s.Records[0].Kind = "unknown" }} {
+	}, func(s *Snapshot) { s.Records[0].Revision = 2 }, func(s *Snapshot) { s.Version = "2" }, func(s *Snapshot) { s.Records = nil }, func(s *Snapshot) { s.Records[0].Kind = "unknown" }} {
 		var snap Snapshot
 		_ = decode(original, &snap)
 		mutate(&snap)
@@ -578,7 +580,7 @@ func TestSnapshotCommitFailurePreservesPrior(t *testing.T) {
 		t.Fatal("uncommitted snapshot published")
 	}
 	f.restart()
-	f.want(200, "GET", "/api/v1/artwork/w500/example.png", token, nil, "")
+	f.want(302, "GET", "/api/v1/artwork/w500/example.png", token, nil, "")
 }
 func TestOwnedShutdownCancelsAndJoinsRequests(t *testing.T) {
 	f := newFixture(t)
@@ -682,7 +684,7 @@ func TestSavedTitlesJoinSnapshotAndRewriteArtwork(t *testing.T) {
 	f.seedSnapshot(p.ID)
 	for _, kind := range []string{"library", "favorites"} {
 		b := f.want(200, "GET", path+"/"+kind, token, nil, "")
-		if bytes.Contains(b, []byte("/internal/v1/")) || !bytes.Contains(b, []byte("/api/v1/artwork/")) || !bytes.Contains(b, []byte("Example")) {
+		if bytes.Contains(b, []byte("/internal/v1/")) || !bytes.Contains(b, []byte("https://image.tmdb.org/t/p/")) || !bytes.Contains(b, []byte("Example")) {
 			t.Fatal("saved metadata was not joined/rewritten")
 		}
 	}
@@ -782,4 +784,10 @@ func TestBackgroundWorkerShutdown(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("background workers did not join")
 	}
+}
+
+// Legacy snapshot fixture used to prove artwork payloads are discarded.
+type artwork struct {
+	MIME  string `json:"mime"`
+	Bytes []byte `json:"bytes"`
 }

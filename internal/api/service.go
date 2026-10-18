@@ -47,6 +47,8 @@ type Service struct {
 	loginMu       sync.Mutex
 	loginAttempts int
 	loginReset    time.Time
+	refreshWake   chan struct{}
+	snapshotWake  chan struct{}
 }
 
 func New(c Config) (*Service, error) {
@@ -59,6 +61,8 @@ func New(c Config) (*Service, error) {
 		return nil, errors.New("encryption key unavailable")
 	}
 	s := &Service{cfg: c, signer: signer, encryption: key, tokens: map[string]string{}, slots: make(chan struct{}, 32), authSlots: make(chan struct{}, 2)}
+	s.refreshWake = make(chan struct{}, 1)
+	s.snapshotWake = make(chan struct{}, 1)
 	for name, path := range map[string]string{"catalog": c.CatalogTokenFile, "provider": c.ProviderTokenFile, "relay": c.RelayTokenFile, "setup": c.SetupTokenFile} {
 		b, e := privateFile(path, 4096)
 		if e != nil || !validServiceToken(b) {
@@ -112,7 +116,18 @@ func New(c Config) (*Service, error) {
 	e = s.db.QueryRow("SELECT data FROM snapshot WHERE id=1").Scan(&raw)
 	if e == nil {
 		if e = decode(raw, &s.snapshot); e == nil {
+			previousCount := len(s.snapshot.Records)
+			s.snapshot = metadataSnapshot(s.snapshot)
 			e = validateSnapshot(s.snapshot)
+			if e == nil && previousCount != len(s.snapshot.Records) {
+				_, e = s.db.Exec("UPDATE snapshot SET data=? WHERE id=1", marshal(s.snapshot))
+				if e == nil {
+					_, e = s.db.Exec("VACUUM")
+					if e == nil {
+						_, e = s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+					}
+				}
+			}
 		}
 	}
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
@@ -124,16 +139,20 @@ func New(c Config) (*Service, error) {
 	return s, nil
 }
 func (s *Service) Start() {
-	s.startWorker(func(ctx context.Context) { _ = s.SyncSnapshot(ctx) })
+	s.startWorker(func(ctx context.Context) { _ = s.SyncSnapshot(ctx) }, s.snapshotWake)
 	s.startWorker(func(ctx context.Context) {
 		s.syncMu.Lock()
 		defer s.syncMu.Unlock()
 		_ = s.syncRecommendations(ctx)
-		s.flushRefresh(ctx)
 	})
+	s.startWorker(func(ctx context.Context) { s.flushRefresh(ctx) }, s.refreshWake)
 	s.startWorker(func(ctx context.Context) { _ = s.retryRevocations(ctx); s.cleanup(ctx) })
 }
-func (s *Service) startWorker(work func(context.Context)) {
+func (s *Service) startWorker(work func(context.Context), wakeChannels ...<-chan struct{}) {
+	var wake <-chan struct{}
+	if len(wakeChannels) > 0 {
+		wake = wakeChannels[0]
+	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -147,9 +166,26 @@ func (s *Service) startWorker(work func(context.Context)) {
 			case <-s.ctx.Done():
 				return
 			case <-tick.C:
+			case <-wake:
+				// Coalesce demand and bound refresh work while clients await
+				// newly requested title/season metadata.
+				timer := time.NewTimer(500 * time.Millisecond)
+				select {
+				case <-s.ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
 			}
 		}
 	}()
+}
+
+func notifyWorker(wake chan struct{}) {
+	select {
+	case wake <- struct{}{}:
+	default:
+	}
 }
 func (s *Service) cleanup(ctx context.Context) {
 	now := time.Now().Unix()

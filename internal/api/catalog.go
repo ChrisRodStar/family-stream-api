@@ -1,14 +1,9 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
-	_ "golang.org/x/image/webp"
-	"image"
-	_ "image/jpeg"
-	_ "image/png"
 	"net/http"
 	"regexp"
 	"sort"
@@ -18,11 +13,6 @@ import (
 )
 
 var artKey = regexp.MustCompile(`^(w300|w500|w1280)/[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp)$`)
-
-type artwork struct {
-	MIME  string `json:"mime"`
-	Bytes []byte `json:"bytes"`
-}
 
 func validArtPath(p string) bool {
 	return p == "" || strings.HasPrefix(p, "/internal/v1/artwork/") && artKey.MatchString(strings.TrimPrefix(p, "/internal/v1/artwork/"))
@@ -112,22 +102,7 @@ func validateSnapshot(v Snapshot) error {
 					return bad()
 				}
 			}
-		case "artwork":
-			var a artwork
-			if !artKey.MatchString(r.Key) || decode(r.Data, &a) != nil || len(a.Bytes) > 8<<20 || len(a.Bytes) == 0 {
-				return bad()
-			}
-			c, format, e := image.DecodeConfig(bytes.NewReader(a.Bytes))
-			if e != nil || c.Width <= 0 || c.Height <= 0 || c.Width > 8192 || c.Height > 8192 || int64(c.Width)*int64(c.Height) > 16000000 {
-				return bad()
-			}
-			expected := map[string]string{"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[format]
-			if expected == "" || expected != a.MIME {
-				return bad()
-			}
-			if _, _, e = image.Decode(bytes.NewReader(a.Bytes)); e != nil {
-				return bad()
-			}
+
 		default:
 			return bad()
 		}
@@ -151,6 +126,7 @@ func (s *Service) SyncSnapshot(ctx context.Context) error {
 	if e = decode(b, &next); e != nil {
 		return e
 	}
+	next = metadataSnapshot(next)
 	if e = validateSnapshot(next); e != nil {
 		return e
 	}
@@ -159,7 +135,7 @@ func (s *Service) SyncSnapshot(ctx context.Context) error {
 	if next.Revision < s.snapshot.Revision || next.Exported.Before(s.snapshot.Exported) {
 		return &fault{502, "catalog_revision_regression"}
 	}
-	_, e = s.db.ExecContext(ctx, "INSERT INTO snapshot VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,data=excluded.data", next.Revision, b)
+	_, e = s.db.ExecContext(ctx, "INSERT INTO snapshot VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,data=excluded.data", next.Revision, marshal(next))
 	if e != nil {
 		return e
 	}
@@ -194,8 +170,8 @@ func (s *Service) records(kind string) []Record {
 	return out
 }
 func publicTitle(t Title) Title {
-	t.Poster = strings.Replace(t.Poster, "/internal/v1/artwork/", "/api/v1/artwork/", 1)
-	t.Backdrop = strings.Replace(t.Backdrop, "/internal/v1/artwork/", "/api/v1/artwork/", 1)
+	t.Poster = strings.Replace(t.Poster, "/internal/v1/artwork/", "https://image.tmdb.org/t/p/", 1)
+	t.Backdrop = strings.Replace(t.Backdrop, "/internal/v1/artwork/", "https://image.tmdb.org/t/p/", 1)
 	return t
 }
 func publicTitles(t []Title) []Title {
@@ -215,7 +191,7 @@ func publicRecord(r Record) Record {
 		var t Season
 		_ = decode(r.Data, &t)
 		for i := range t.Episodes {
-			t.Episodes[i].Still = strings.Replace(t.Episodes[i].Still, "/internal/v1/artwork/", "/api/v1/artwork/", 1)
+			t.Episodes[i].Still = strings.Replace(t.Episodes[i].Still, "/internal/v1/artwork/", "https://image.tmdb.org/t/p/", 1)
 		}
 		r.Data = marshal(t)
 	case "shelf":
@@ -254,6 +230,10 @@ func (s *Service) catalogRead(w http.ResponseWriter, r *http.Request) error {
 		}
 		_ = s.queueRefresh(r.Context(), map[string]any{"kind": "title", "type": i.Type, "id": i.ID})
 		rec, ok = s.record("title", i.Key())
+		var title Title
+		if !ok || decode(rec.Data, &title) != nil || !title.Details {
+			notifyWorker(s.snapshotWake)
+		}
 	} else if len(p) >= 4 && p[0] == "tv" && p[2] == "seasons" {
 		n, e := strconv.ParseInt(p[1], 10, 64)
 		season, se := strconv.Atoi(p[3])
@@ -262,6 +242,9 @@ func (s *Service) catalogRead(w http.ResponseWriter, r *http.Request) error {
 		}
 		_ = s.queueRefresh(r.Context(), map[string]any{"kind": "season", "type": "tv", "id": n, "season": season})
 		rec, ok = s.record("season", fmt.Sprintf("tv:%d:%d", n, season))
+		if !ok {
+			notifyWorker(s.snapshotWake)
+		}
 		if len(p) == 6 && p[4] == "episodes" {
 			ep, e := strconv.Atoi(p[5])
 			if e != nil || ep < 1 {
@@ -325,17 +308,8 @@ func (s *Service) catalogRead(w http.ResponseWriter, r *http.Request) error {
 		if !artKey.MatchString(key) {
 			return bad()
 		}
-		rec, ok = s.record("artwork", key)
-		if !ok {
-			return missing()
-		}
-		var a artwork
-		_ = decode(rec.Data, &a)
-		w.Header().Set("Content-Type", a.MIME)
-		w.Header().Set("X-Catalog-State", rec.State)
-		w.Header().Set("ETag", fmt.Sprintf(`"%d"`, rec.Revision))
-		w.WriteHeader(200)
-		_, _ = w.Write(a.Bytes)
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		http.Redirect(w, r, "https://image.tmdb.org/t/p/"+key, http.StatusFound)
 		return nil
 	} else {
 		return missing()
@@ -402,7 +376,7 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request, p Profile) error 
 	return nil
 }
 func (s *Service) queueRefresh(ctx context.Context, job any) error {
-	return transaction(ctx, s.db, func(tx *sql.Tx) error {
+	err := transaction(ctx, s.db, func(tx *sql.Tx) error {
 		var n int
 		if e := tx.QueryRow("SELECT count(*) FROM refresh_jobs").Scan(&n); e != nil {
 			return e
@@ -414,4 +388,23 @@ func (s *Service) queueRefresh(ctx context.Context, job any) error {
 		_, e := tx.Exec("INSERT OR IGNORE INTO refresh_jobs VALUES(?,?)", hash(string(b)), b)
 		return e
 	})
+	if err == nil {
+		notifyWorker(s.refreshWake)
+	}
+	return err
+}
+
+// Discard legacy image payloads at the snapshot boundary. The API persists
+// metadata and image references only, including during rolling upgrades.
+func metadataSnapshot(snapshot Snapshot) Snapshot {
+	records := make([]Record, 0, len(snapshot.Records))
+	for _, record := range snapshot.Records {
+		if record.Kind != "artwork" {
+			records = append(records, record)
+		}
+	}
+	if snapshot.Records != nil {
+		snapshot.Records = records
+	}
+	return snapshot
 }

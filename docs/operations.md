@@ -42,14 +42,13 @@ IDs for catalog handles/provider isolation/relay ownership.
 SQLite schema v1 migrates transactionally, refuses newer schemas, enables WAL,
 FULL synchronous commits, foreign keys and a three-second busy bound. Files are
 0600, newly created directories 0700. A retained advisory file lock enforces one API process per database; process exit releases ownership. Personal
-state and retained artwork survive process restart. A separate AES-256-GCM key
+state and retained metadata survive process restart. Artwork bytes are excluded from snapshots; browsers fetch and cache images from TMDB’s image CDN. A separate AES-256-GCM key
 protects pending provider selections/control payloads, with per-row associated
 data and random nonces. A persistent authenticated sentinel rejects a wrong key
 at startup; never replace a lost key or reset storage to claim recovery. Signed
 playback URLs are generated only for replies and are never stored in SQLite.
 
-Three independent owned one-minute workers handle snapshots, recommendation/
-refresh synchronization, and revocations/maintenance. Each pass has a 40-second
+Four independent owned workers handle snapshots, recommendation synchronization, metadata refresh delivery, and revocations/maintenance. Periodic passes run each minute; requested metadata wakes the refresh and snapshot owners promptly, coalesced at a 500 ms minimum interval. Each pass has a 40-second
 bound and joins on shutdown. Revocations do not wait behind catalog work.
 Recommendation deletion outbox runs before replacement inputs; source/profile
 changes during synchronization leave durable work for retry. Inputs synchronize
@@ -70,8 +69,7 @@ including the seven-day retry retention window. Each playback keeps at most 256
 successful mutation keys. These are resource policies, not viewer capacity claims.
 
 Snapshot receipt validates the complete envelope, identities, exact coordinates,
-record keys/revisions/times, duplicate records, recognized kinds, artwork paths,
-MIME, dimensions and decoded image bodies. It rejects truncated responses,
+record keys/revisions/times, duplicate records, recognized metadata kinds and validated artwork references. Legacy image payload records are discarded before persistence. It rejects truncated responses,
 malformed JSON, unknown versions and revision/time regressions, then atomically
 replaces SQLite state before publishing the new in-memory copy. Failed receipt,
 validation or commit preserves the prior copy. Freshness changes over time even
@@ -99,3 +97,5 @@ not resurrect grants. Future migrations require backup/rollback tests before
 raising schema version. Unknown/newer schemas and corrupt retained snapshots
 fail startup without deleting/resetting data. There is no automatic corruption
 repair, password recovery backdoor, destructive eviction or distributed controller.
+
+On upgrade, the API removes image payloads from its retained snapshot and vacuums/checkpoints SQLite to reclaim their storage. Authentication, profiles, libraries and playback state are preserved. Legacy image routes issue redirects; no API image download or image-byte persistence is performed.

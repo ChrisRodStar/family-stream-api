@@ -229,6 +229,7 @@ func (s *Service) flushRefresh(ctx context.Context) {
 		}
 		if _, e := s.private(ctx, "catalog", "POST", "/internal/v1/refresh", raw, "", 8192); e == nil {
 			_, _ = s.db.ExecContext(ctx, "DELETE FROM refresh_jobs WHERE key=?", j.k)
+			notifyWorker(s.snapshotWake)
 		}
 	}
 }

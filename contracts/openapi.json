@@ -2037,7 +2037,7 @@
     },
     "/api/v1/artwork/{size}/{filename}": {
       "get": {
-        "summary": "Retained validated artwork",
+        "summary": "Legacy artwork reference redirects to TMDB image CDN",
         "operationId": "get_api_v1_artwork_size_filename",
         "security": [
           {
@@ -2048,26 +2048,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "302": {
             "description": "Success",
-            "content": {
-              "image/jpeg": {
+            "headers": {
+              "Location": {
                 "schema": {
                   "type": "string",
-                  "format": "binary"
-                }
-              },
-              "image/png": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              },
-              "image/webp": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
+                  "format": "uri"
+                },
+                "description": "Public image.tmdb.org URL. Image payloads are fetched and cached by the client."
               }
             }
           },
@@ -2102,7 +2091,7 @@
         ]
       },
       "head": {
-        "summary": "Retained validated artwork",
+        "summary": "Legacy artwork reference redirects to TMDB image CDN",
         "operationId": "head_api_v1_artwork_size_filename",
         "security": [
           {
@@ -2113,26 +2102,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "302": {
             "description": "Success",
-            "content": {
-              "image/jpeg": {
+            "headers": {
+              "Location": {
                 "schema": {
                   "type": "string",
-                  "format": "binary"
-                }
-              },
-              "image/png": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              },
-              "image/webp": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
+                  "format": "uri"
+                },
+                "description": "Public image.tmdb.org URL. Image payloads are fetched and cached by the client."
               }
             }
           },

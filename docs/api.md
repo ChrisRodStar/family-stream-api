@@ -54,7 +54,7 @@ the reference's specific 48-choice/banner presentation is a future client concer
 | `/titles/{movie\|tv}/{id}` | Cached title envelope, including detail/summary distinction |
 | `/tv/{id}/seasons/{season}` | Season envelope |
 | `/tv/{id}/seasons/{season}/episodes/{episode}` | Exact episode with show ID, timestamps and state |
-| `/artwork/{w300\|w500\|w1280}/{filename}` | Retained JPEG/PNG/WebP bytes, private cache policy, freshness header |
+| `/artwork/{w300\|w500\|w1280}/{filename}` | 302 redirect to the public TMDB image CDN; no server image payload or cache |
 | `/profiles/{profile}/home` | General shelves and profile-authorized recommendations, or null if missing |
 | `/profiles/{profile}/recommendations?type=all\|movie\|tv` | Profile-authorized recommendation envelope |
 
@@ -69,7 +69,7 @@ First-time data may take more than one sweep to arrive; this is not upstream-on-
 search or a freshness SLA. Offsets are 0–20000; queries 1–200 bytes.
 
 The API never publishes the private snapshot or an arbitrary recommendation
-handle. Public artwork paths are rewritten to `/api/v1/artwork/*`. Personalized
+handle. Public poster, backdrop and still references are rewritten to `https://image.tmdb.org/t/p/*`. Clients fetch and cache images directly; the API stores only metadata. Legacy `/api/v1/artwork/*` paths redirect to that fixed CDN. Personalized
 views use the full ranked catalog pool with the catalog's format preference,
 category filtering, 24 featured picks and franchise spacing; preference/input
 fingerprint mismatch keeps old results usable but stale.
