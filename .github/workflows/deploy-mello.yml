@@ -1,0 +1,24 @@
+name: Deploy api to Mello
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mello-api
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.repository == 'ChrisRodStar/family-stream-api'
+    runs-on: [self-hosted, Linux, ARM64, family-stream-api]
+    timeout-minutes: 90
+    steps:
+      - name: Check out the pushed commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build and activate api
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: python3 /home/dev/family-stream-v2/automation/release.py deploy api "$DEPLOY_SHA" "$GITHUB_WORKSPACE"
