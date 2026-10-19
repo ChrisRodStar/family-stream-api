@@ -116,44 +116,38 @@ func (s *Service) createPlayback(w http.ResponseWriter, r *http.Request, p Profi
 			return &fault{409, "idempotency_conflict"}
 		}
 	} else if errors.Is(e, sql.ErrNoRows) {
-		// Fast-path: Check if an active, unrevoked, unexpired session for the same profile & fingerprint is already ready
-		var existingID string
+		// Enrich only from durable local metadata; known-ID playback makes no
+		// synchronous catalog request, even when the catalog is healthy.
+		title := s.cachedTitle(in.Identity)
+		if in.IMDb == "" {
+			in.IMDb = title.IMDb
+		}
+		if in.MAL == nil && title.MAL > 0 {
+			n := title.MAL
+			in.MAL = &n
+		}
+		pbid = id()
 		now := time.Now()
-		if err := s.db.QueryRowContext(r.Context(), "SELECT id FROM playbacks WHERE profile=? AND fingerprint=? AND revoked=0 AND ready IS NOT NULL AND expires>? ORDER BY created DESC LIMIT 1", p.ID, fingerprint, now.Unix()+120).Scan(&existingID); err == nil && existingID != "" {
-			pbid = existingID
-		} else {
-			// Enrich only from durable local metadata; known-ID playback makes no
-			// synchronous catalog request, even when the catalog is healthy.
-			title := s.cachedTitle(in.Identity)
-			if in.IMDb == "" {
-				in.IMDb = title.IMDb
-			}
-			if in.MAL == nil && title.MAL > 0 {
-				n := title.MAL
-				in.MAL = &n
-			}
-			pbid = id()
-			e = transaction(r.Context(), s.db, func(tx *sql.Tx) error {
-				var n int
-				if e := tx.QueryRow("SELECT count(*) FROM playbacks").Scan(&n); e != nil {
-					return e
-				}
-				if n >= 4096 {
-					return &fault{429, "playback_limit"}
-				}
-				var exists int
-				if e := tx.QueryRow("SELECT count(*) FROM profiles WHERE id=?", p.ID).Scan(&exists); e != nil {
-					return e
-				}
-				if exists != 1 {
-					return missing()
-				}
-				_, e := tx.Exec("INSERT INTO playbacks(id,profile,request,expires,created,idem,fingerprint) VALUES(?,?,?,?,?,?,?)", pbid, p.ID, marshal(in), now.Add(6*time.Hour).Unix(), now.Unix(), key, fingerprint)
-				return e
-			})
-			if e != nil {
+		e = transaction(r.Context(), s.db, func(tx *sql.Tx) error {
+			var n int
+			if e := tx.QueryRow("SELECT count(*) FROM playbacks").Scan(&n); e != nil {
 				return e
 			}
+			if n >= 4096 {
+				return &fault{429, "playback_limit"}
+			}
+			var exists int
+			if e := tx.QueryRow("SELECT count(*) FROM profiles WHERE id=?", p.ID).Scan(&exists); e != nil {
+				return e
+			}
+			if exists != 1 {
+				return missing()
+			}
+			_, e := tx.Exec("INSERT INTO playbacks(id,profile,request,expires,created,idem,fingerprint) VALUES(?,?,?,?,?,?,?)", pbid, p.ID, marshal(in), now.Add(6*time.Hour).Unix(), now.Unix(), key, fingerprint)
+			return e
+		})
+		if e != nil {
+			return e
 		}
 	} else {
 		return e
