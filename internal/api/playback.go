@@ -32,6 +32,7 @@ func (s *Service) playback(w http.ResponseWriter, r *http.Request, p Profile, pa
 			if _, e = s.db.ExecContext(r.Context(), "UPDATE playbacks SET revoked=1 WHERE id=?", pb.ID); e != nil {
 				return e
 			}
+			s.cancelBackups(pb.ID)
 			if e = s.revokeOne(r.Context(), pb); e != nil {
 				return e
 			}
@@ -203,9 +204,19 @@ func (s *Service) createPlayback(w http.ResponseWriter, r *http.Request, p Profi
 		return e
 	}
 	pb.Ready = ready
+	var staged struct {
+		Selection json.RawMessage `json:"selection"`
+	}
+	if json.Unmarshal(raw, &staged) == nil {
+		s.scheduleBackups(pb, p.ID, staged.Selection)
+	}
 	return s.playbackReply(w, r, pb, false)
 }
 func (s *Service) resolve(ctx context.Context, pid string, in PlaybackRequest, refresh bool) ([]byte, error) {
+	return s.resolveMode(ctx, pid, in, refresh, false)
+}
+
+func (s *Service) resolveMode(ctx context.Context, pid string, in PlaybackRequest, refresh, complete bool) ([]byte, error) {
 	title := map[string]any{"type": in.Type, "tmdb_id": in.ID}
 	if in.IMDb != "" {
 		title["imdb_id"] = in.IMDb
@@ -225,7 +236,14 @@ func (s *Service) resolve(ctx context.Context, pid string, in PlaybackRequest, r
 	if in.Preferences != nil {
 		prefs = in.Preferences
 	}
-	req := map[string]any{"version": "providers.v1", "context_key": pid, "lookup": map[string]any{"title": title, "refresh": refresh, "preferences": prefs, "device": device}}
+	lookup := map[string]any{"title": title, "refresh": refresh, "preferences": prefs, "device": device}
+	if !refresh {
+		lookup["startup_height"] = 1080
+	}
+	if complete {
+		lookup["wait_for_complete"] = true
+	}
+	req := map[string]any{"version": "providers.v1", "context_key": pid, "lookup": lookup}
 	b, e := s.private(ctx, "provider", "POST", "/internal/v1/resolve", req, "", 2<<20)
 	if e != nil {
 		return nil, e

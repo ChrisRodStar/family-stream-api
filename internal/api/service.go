@@ -23,28 +23,30 @@ import (
 )
 
 type Service struct {
-	owner        *os.File
-	closeOnce    sync.Once
-	closeErr     error
-	lifecycleMu  sync.Mutex
-	cfg          Config
-	db           *sql.DB
-	client       *http.Client
-	signer       ed25519.PrivateKey
-	encryption   []byte
-	tokens       map[string]string
-	household    string
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	slots        chan struct{}
-	playLocks    playbackLocks
-	snapMu       sync.RWMutex
-	snapshot     Snapshot
-	stopping     atomic.Bool
-	syncMu       sync.Mutex
-	refreshWake  chan struct{}
-	snapshotWake chan struct{}
+	owner             *os.File
+	closeOnce         sync.Once
+	closeErr          error
+	lifecycleMu       sync.Mutex
+	cfg               Config
+	db                *sql.DB
+	client            *http.Client
+	signer            ed25519.PrivateKey
+	encryption        []byte
+	tokens            map[string]string
+	household         string
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	slots             chan struct{}
+	playLocks         playbackLocks
+	enrichmentSlots   chan struct{}
+	enrichmentCancels map[string]context.CancelFunc
+	snapMu            sync.RWMutex
+	snapshot          Snapshot
+	stopping          atomic.Bool
+	syncMu            sync.Mutex
+	refreshWake       chan struct{}
+	snapshotWake      chan struct{}
 }
 
 func New(c Config) (*Service, error) {
@@ -56,7 +58,7 @@ func New(c Config) (*Service, error) {
 	if e != nil || len(key) != 32 {
 		return nil, errors.New("encryption key unavailable")
 	}
-	s := &Service{cfg: c, signer: signer, encryption: key, tokens: map[string]string{}, slots: make(chan struct{}, 32)}
+	s := &Service{cfg: c, signer: signer, encryption: key, tokens: map[string]string{}, slots: make(chan struct{}, 32), enrichmentSlots: make(chan struct{}, 2)}
 	s.refreshWake = make(chan struct{}, 1)
 	s.snapshotWake = make(chan struct{}, 1)
 	for name, path := range map[string]string{"catalog": c.CatalogTokenFile, "provider": c.ProviderTokenFile, "relay": c.RelayTokenFile} {

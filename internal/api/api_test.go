@@ -24,26 +24,30 @@ import (
 )
 
 type fixture struct {
-	t              *testing.T
-	s              *Service
-	c              Config
-	server         *httptest.Server
-	catalog        *httptest.Server
-	provider       *httptest.Server
-	relay          *httptest.Server
-	mu             sync.Mutex
-	snapshot       Snapshot
-	catalogMode    string
-	providerCalls  int
-	lastLookup     map[string]any
-	ready          RelayReady
-	relayCreates   int
-	relayMutations int
-	loseReply      bool
-	noBackups      bool
-	loseCreate     bool
-	deleted        bool
-	inputs         map[string]inputs
+	t                *testing.T
+	s                *Service
+	c                Config
+	server           *httptest.Server
+	catalog          *httptest.Server
+	provider         *httptest.Server
+	relay            *httptest.Server
+	mu               sync.Mutex
+	snapshot         Snapshot
+	catalogMode      string
+	providerCalls    int
+	pendingSelection bool
+	completeRelease  <-chan struct{}
+	completeStarted  chan struct{}
+	backupEnriched   chan struct{}
+	lastLookup       map[string]any
+	ready            RelayReady
+	relayCreates     int
+	relayMutations   int
+	loseReply        bool
+	noBackups        bool
+	loseCreate       bool
+	deleted          bool
+	inputs           map[string]inputs
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -91,9 +95,23 @@ func newFixture(t *testing.T) *fixture {
 		f.providerCalls++
 		_ = json.NewDecoder(r.Body).Decode(&f.lastLookup)
 		lookup := f.lastLookup["lookup"].(map[string]any)
+		complete, _ := lookup["wait_for_complete"].(bool)
+		if complete && f.completeRelease != nil {
+			release, started := f.completeRelease, f.completeStarted
+			f.mu.Unlock()
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+			f.mu.Lock()
+		}
 		source := map[string]any{"title": lookup["title"], "url": "http://private.example/master.m3u8", "resolver_metadata": map[string]any{"signed": "SECRET-PRIVATE-METADATA"}}
 		ranked := map[string]any{"candidate": map[string]any{"source": source, "observation": map[string]any{"format": "hls"}}, "score": 4}
-		write(w, 200, map[string]any{"version": "providers.v1", "selected": ranked, "backups": []any{ranked, ranked}, "providers": []any{}, "rejected": map[string]any{}})
+		write(w, 200, map[string]any{"version": "providers.v1", "pending": f.pendingSelection && !complete, "selected": ranked, "backups": []any{ranked, ranked}, "providers": []any{}, "rejected": map[string]any{}})
 	}))
 	f.ready = RelayReady{Version: "relay.v1", SID: strings.Repeat("s", 24), Entry: "/stream/" + strings.Repeat("s", 24) + "/entry", Format: "hls", Expires: time.Now().UTC().Add(time.Hour).Truncate(time.Second), Revision: 1, AuthRevision: 7, Generation: 1, State: "active"}
 	f.relay = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +121,19 @@ func newFixture(t *testing.T) *fixture {
 			t.Error("relay auth")
 		}
 		switch {
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/backups"):
+			var payload struct {
+				Generation uint64 `json:"expected_generation"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			if payload.Generation != f.ready.Generation {
+				t.Error("backup enrichment changed generation")
+			}
+			select {
+			case f.backupEnriched <- struct{}{}:
+			default:
+			}
+			w.WriteHeader(204)
 		case r.Method == "DELETE":
 			f.deleted = true
 			f.ready.State = "revoked"
