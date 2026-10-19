@@ -38,7 +38,7 @@ type Service struct {
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 	slots        chan struct{}
-	playMu       sync.Mutex
+	playLocks    playbackLocks
 	snapMu       sync.RWMutex
 	snapshot     Snapshot
 	stopping     atomic.Bool

@@ -113,6 +113,14 @@ preferences, 50 favorites and 30 current UTC activity dates.
 All routes below are under `/profiles/{profile}` and enforce ownership. Setup and
 mutations require an ASCII `Idempotency-Key` (1–128 alphanumeric/underscore/hyphen).
 
+Unrelated playback requests run independently. Identical creates serialize by
+profile and idempotency key; reconciliation, mutation, creation finalization and
+revocation serialize by playback ID. At most 64 coordination entries are retained.
+A competing operation on the same identity waits up to one second, then returns
+`429 playback_busy`. Retry transient/ambiguous replies with the same key and body;
+do not replace the key merely because the first reply was lost.
+
+
 | Method and route | Request / result |
 |---|---|
 | POST `/playback` | `type`, `id`, TV `season`/`episode`, optional `imdb_id`, `mal_id`, `device`, `preferences` |

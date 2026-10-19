@@ -12,28 +12,17 @@ import (
 )
 
 func (s *Service) playback(w http.ResponseWriter, r *http.Request, p Profile, parts []string) error {
-	acquired := false
-	for i := 0; i < 20; i++ {
-		if s.playMu.TryLock() {
-			acquired = true
-			break
-		}
-		select {
-		case <-r.Context().Done():
-			return r.Context().Err()
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
-	if !acquired {
-		return &fault{429, "playback_busy"}
-	}
-	defer s.playMu.Unlock()
 	if len(parts) == 0 && r.Method == "POST" {
 		return s.createPlayback(w, r, p)
 	}
 	if len(parts) < 1 || len(parts) > 2 || !safeID(parts[0]) {
 		return missing()
 	}
+	release, e := s.playLocks.acquire(r.Context(), "session/"+parts[0], time.Second)
+	if e != nil {
+		return e
+	}
+	defer release()
 	pb, e := s.loadPlayback(r.Context(), parts[0], p.ID)
 	if e != nil {
 		return e
@@ -101,6 +90,11 @@ func (s *Service) createPlayback(w http.ResponseWriter, r *http.Request, p Profi
 	if !safeID(key) {
 		return bad()
 	}
+	release, e := s.playLocks.acquire(r.Context(), "create/"+p.ID+"/"+key, time.Second)
+	if e != nil {
+		return e
+	}
+	defer release()
 	var in PlaybackRequest
 	if e := body(r, &in); e != nil {
 		return e
@@ -110,7 +104,7 @@ func (s *Service) createPlayback(w http.ResponseWriter, r *http.Request, p Profi
 	}
 	fingerprint := hash(string(marshal(in)))
 	var pbid, previous string
-	e := s.db.QueryRowContext(r.Context(), "SELECT id,fingerprint FROM playbacks WHERE profile=? AND idem=?", p.ID, key).Scan(&pbid, &previous)
+	e = s.db.QueryRowContext(r.Context(), "SELECT id,fingerprint FROM playbacks WHERE profile=? AND idem=?", p.ID, key).Scan(&pbid, &previous)
 	if e == nil {
 		if previous != fingerprint {
 			return &fault{409, "idempotency_conflict"}
@@ -152,6 +146,11 @@ func (s *Service) createPlayback(w http.ResponseWriter, r *http.Request, p Profi
 	} else {
 		return e
 	}
+	releaseSession, e := s.playLocks.acquire(r.Context(), "session/"+pbid, time.Second)
+	if e != nil {
+		return e
+	}
+	defer releaseSession()
 	pb, e := s.loadPlayback(r.Context(), pbid, p.ID)
 	if e != nil {
 		return e
@@ -564,10 +563,6 @@ func (s *Service) revokeOne(ctx context.Context, p Playback) error {
 	return e
 }
 func (s *Service) retryRevocations(ctx context.Context) error {
-	if !s.playMu.TryLock() {
-		return nil
-	}
-	defer s.playMu.Unlock()
 	rows, e := s.db.QueryContext(ctx, "SELECT id,profile FROM playbacks WHERE revoked=1 AND revoked_done=0 AND expires>? LIMIT 64", time.Now().Unix())
 	if e != nil {
 		return e
@@ -588,10 +583,15 @@ func (s *Service) retryRevocations(ctx context.Context) error {
 		return e
 	}
 	for _, v := range refs {
-		p, e := s.loadPlayback(ctx, v.id, v.pid)
-		if e == nil {
+		release, lockErr := s.playLocks.acquire(ctx, "session/"+v.id, 0)
+		if lockErr != nil {
+			continue
+		}
+		p, loadErr := s.loadPlayback(ctx, v.id, v.pid)
+		if loadErr == nil {
 			_ = s.revokeOne(ctx, p)
 		}
+		release()
 	}
 	return ctx.Err()
 }
