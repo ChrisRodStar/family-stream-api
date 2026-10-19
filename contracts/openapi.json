@@ -2065,6 +2065,19 @@
           "resume_seconds": {
             "type": "number",
             "minimum": 0
+          },
+          "available_heights": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384
+            },
+            "maxItems": 32,
+            "uniqueItems": true
           }
         },
         "required": [

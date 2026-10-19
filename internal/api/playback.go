@@ -289,6 +289,16 @@ func (s *Service) resolveMode(ctx context.Context, pid string, in PlaybackReques
 	return b, nil
 }
 func validateReady(r RelayReady) error {
+	if len(r.AvailableHeights) > 32 || (len(r.AvailableHeights) > 0 && r.Format != "hls") {
+		return &fault{502, "relay_invalid_response"}
+	}
+	seen := make(map[int]bool)
+	for _, height := range r.AvailableHeights {
+		if height <= 0 || height > 16384 || seen[height] {
+			return &fault{502, "relay_invalid_response"}
+		}
+		seen[height] = true
+	}
 	if r.Version != "relay.v1" || !safeID(r.SID) || r.Entry != "/stream/"+r.SID+"/entry" || (r.Format != "hls" && r.Format != "mp4") || r.Revision == 0 || r.AuthRevision == 0 || r.Generation == 0 || r.Expires.IsZero() {
 		return &fault{502, "relay_invalid_response"}
 	}
@@ -359,7 +369,7 @@ func (s *Service) playbackReply(w http.ResponseWriter, r *http.Request, p Playba
 	} else if !errors.Is(e, sql.ErrNoRows) {
 		return e
 	}
-	write(w, 200, map[string]any{"id": p.ID, "title": p.Request.Target, "url": p.Ready.Entry + "?st=" + token, "format": p.Ready.Format, "expires_at": p.Ready.Expires, "revision": p.Ready.Revision, "source_generation": p.Ready.Generation, "reload_required": reload || p.Ready.Resume, "resume_seconds": position})
+	write(w, 200, map[string]any{"id": p.ID, "title": p.Request.Target, "url": p.Ready.Entry + "?st=" + token, "format": p.Ready.Format, "available_heights": p.Ready.AvailableHeights, "expires_at": p.Ready.Expires, "revision": p.Ready.Revision, "source_generation": p.Ready.Generation, "reload_required": reload || p.Ready.Resume, "resume_seconds": position})
 	return nil
 }
 func (s *Service) grant(r RelayReady, owner string) (string, error) {

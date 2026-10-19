@@ -196,16 +196,17 @@ type Progress struct {
 func finite(v float64) bool { return !math.IsInf(v, 0) && !math.IsNaN(v) && v >= 0 }
 
 type RelayReady struct {
-	Version      string    `json:"contract_version"`
-	SID          string    `json:"session_id"`
-	Entry        string    `json:"entry_path"`
-	Format       string    `json:"format"`
-	Expires      time.Time `json:"expires_at"`
-	Revision     uint64    `json:"revision"`
-	AuthRevision uint64    `json:"auth_revision"`
-	Generation   uint64    `json:"source_generation"`
-	State        string    `json:"state"`
-	Resume       bool      `json:"resume_required"`
+	AvailableHeights []int     `json:"available_heights,omitempty"`
+	Version          string    `json:"contract_version"`
+	SID              string    `json:"session_id"`
+	Entry            string    `json:"entry_path"`
+	Format           string    `json:"format"`
+	Expires          time.Time `json:"expires_at"`
+	Revision         uint64    `json:"revision"`
+	AuthRevision     uint64    `json:"auth_revision"`
+	Generation       uint64    `json:"source_generation"`
+	State            string    `json:"state"`
+	Resume           bool      `json:"resume_required"`
 }
 type Playback struct {
 	ID      string          `json:"id"`
