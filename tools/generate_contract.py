@@ -27,13 +27,14 @@ S["Device"]=obj({"formats":array(enum("hls","mp4")),"codecs":array(string),"max_
 S["PlaybackPreferences"]=obj({"audio_languages":array(string),"subtitle_languages":array(string),"require_audio":boolean,"require_subtitles":boolean,"max_height":{"type":"integer","minimum":0}},[])
 S["PlaybackRequest"]=obj(dict(target,imdb_id={"type":"string","pattern":"^tt[0-9]{1,20}$"},mal_id=positive,device=ref("Device"),preferences=ref("PlaybackPreferences")),["type","id"])
 S["PlaybackReply"]=obj({"id":string,"title":ref("Target"),"url":{"type":"string","pattern":"^/stream/[A-Za-z0-9_-]+/entry\\?st="},"format":enum("hls","mp4"),"expires_at":timestamp,"revision":positive,"source_generation":positive,"reload_required":boolean,"resume_seconds":nonnegative})
+S["PlaybackReply"]["properties"]["available_heights"]={"type":["array","null"],"items":{"type":"integer","minimum":1,"maximum":16384},"maxItems":32,"uniqueItems":True}
 S["ProgressUpdate"]=obj({"playback_id":string,"sequence":positive,"position_seconds":nonnegative,"duration_seconds":nonnegative,"watched_seconds":nonnegative})
 S["Progress"]=obj(dict(target,position_seconds=nonnegative,duration_seconds=nonnegative,watched_seconds=nonnegative,completed=boolean,updated_at=timestamp),["type","id","position_seconds","duration_seconds","watched_seconds","completed","updated_at"])
 S["SeasonSummary"]=obj({"season":{"type":"integer","minimum":0},"name":string,"episode_count":{"type":"integer","minimum":0}})
 S["Title"]=obj(dict(identity,title=string,overview=string,date=string,rating={"type":"number"},poster=string,backdrop=string,imdb_id=string,mal_id=positive,runtime={"type":"integer","minimum":0,"description":"Minutes, deliberately distinct from public playback/progress seconds."},genres=array(string),seasons=array(ref("SeasonSummary")),details=boolean),["type","id","title","overview","rating","details"])
 S["Episode"]=obj({"tmdb_episode_id":integer,"season":{"type":"integer","minimum":0},"episode":positive,"name":string,"overview":string,"runtime":{"type":"integer","description":"Minutes"},"still":string,"air_date":string},["tmdb_episode_id","season","episode","name","overview","runtime"])
 S["Season"]=obj({"show_id":positive,"season":{"type":"integer","minimum":0},"name":string,"episodes":array(ref("Episode"))})
-S["Shelf"]=obj({"id":string,"heading":string,"titles":array(ref("Title"))})
+S["Shelf"]=obj({"id":string,"heading":string,"titles":array(ref("Title")),"kind":string,"source":string,"reason":string},["id","heading","titles"])
 S["Recommendations"]=obj({"fingerprint":string,"pool":array(ref("Title")),"sections":array(ref("Shelf"))})
 record={"kind":enum("title","season","shelf","search","recommendations"),"key":string,"data":{"oneOf":[ref("Title"),ref("Season"),ref("Shelf"),ref("Recommendations"),array(ref("Title"))]},"updated_at":timestamp,"expires_at":timestamp,"revision":positive,"state":enum("fresh","stale")}
 S["Record"]=obj(record)
@@ -49,6 +50,7 @@ def op(method,path,summary,response=None,body=None,status=200,auth=True,idem=Fal
             if name in ("id","episode"):schema=positive
             if name=="season":schema={"type":"integer","minimum":0}
             if name=="type":schema=enum("movie","tv")
+            if name=="topic":schema={"type":"string","pattern":"^(topic-|taste-)[A-Za-z0-9_-]+$"}
             parameters.append({"name":name,"in":"path","required":True,"schema":schema})
     if idem: parameters.append({"name":"Idempotency-Key","in":"header","required":True,"schema":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,128}$"}})
     for name,schema,required in query or []:parameters.append({"name":name,"in":"query","required":required,"schema":schema})
@@ -71,7 +73,7 @@ offset=("offset",{"type":"integer","minimum":0,"maximum":20000},False)
 op("get",p+"/history","Read persistent viewing history",obj({"records":array(ref("Progress")),"offset":integer,"limit":{"const":100}}),query=[offset])
 op("get",p+"/resume","Targeted exact title/episode resume lookup",ref("Progress"),query=[("type",enum("movie","tv"),True),("id",positive,True),("season",{"type":"integer","minimum":0},False),("episode",positive,False)])
 op("put",p+"/progress","Update cumulative measured viewing idempotently",ref("Progress"),ref("ProgressUpdate"))
-op("get",p+"/home","Owned Home view and general shelves",obj({"shelves":array(ref("Record")),"recommendations":{"oneOf":[ref("Record"),{"type":"null"}]}}))
+op("get",p+"/home","Assembled recommendation page from saved catalog data and current profile choices",obj({"shelves":array(ref("Record")),"recommendations":{"oneOf":[ref("Record"),{"type":"null"}]},"sections":array(ref("Shelf")),"featured":{"type":"array","maxItems":1,"items":ref("Title")},"page_version":{"type":"string","description":"Stable content hash for the assembled page."}}),query=[("type",dict(enum("all","movie","tv"),default="all"),False),("topic",dict(enum("all","short","classics","discovery"),default="all"),False),("shelf",{"type":"string","maxLength":200,"description":"See all: one known category, up to 100 eligible saved titles, without a featured reservation."},False)])
 op("get",p+"/recommendations","Owned cached recommendation view",ref("Record"),query=[("type",enum("all","movie","tv"),False)])
 op("post",p+"/playback","Resolve and import one provider Selection",ref("PlaybackReply"),ref("PlaybackRequest"),idem=True)
 op("get",p+"/playback/{playback}","Reconcile persisted playback and issue grant",ref("PlaybackReply"))
@@ -87,5 +89,16 @@ for method in ("get","head"):
     paths[base+"/artwork/{size}/{filename}"][method]["responses"]["302"]["headers"]={"Location":{"schema":{"type":"string","format":"uri"},"description":"Public image.tmdb.org URL. Image payloads are fetched and cached by the client."}}
 op("get",base+"/status","Redacted retained-state diagnostics",ref("Status"))
 for health in ("livez","readyz"):op("get","/health/"+health,"API lifecycle/storage health",obj({"version":{"const":"api.v1"},"status":string}),auth=False)
-doc={"openapi":"3.1.0","info":{"title":"Family Stream public API","version":"api.v1","description":"Private-network household access with no account login or password. Profiles share one retained household. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."},"paths":paths,"components":{"schemas":S}}
+for kind in ("hidden","watched","ignored"):
+    path=p+"/recommendation-"+kind
+    op("get",path,"Read "+kind+" recommendation choices",obj({"titles":array(ref("Title"))}))
+    for method in ("put","delete"):
+        op(method,path+"/{type}/{id}","Save or undo "+kind+" recommendation choices",status=204)
+feedback={kind:array(ref("Title")) for kind in ("hidden","watched","ignored","favorites")}
+feedback["topics"]=array(string)
+op("get",p+"/recommendation-feedback","Read reversible recommendation choices",obj(feedback))
+op("get",p+"/recommendation-topics","Read hidden category IDs",obj({"topics":array(string)}))
+op("put",p+"/recommendation-topics/{topic}","Hide a known category",status=204)
+op("delete",p+"/recommendation-topics/{topic}","Restore a category",status=204)
+doc={"openapi":"3.1.0","info":{"title":"Stream tv public API","version":"api.v1","description":"Private-network household access with no account login or password. Profiles share one retained household. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."},"paths":paths,"components":{"schemas":S}}
 (Path(__file__).resolve().parents[1]/"contracts/openapi.json").write_text(json.dumps(doc,indent=2)+"\n")

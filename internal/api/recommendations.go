@@ -109,6 +109,38 @@ func (s *Service) derived(ctx context.Context, pid string) (inputs, int64, error
 	if e != nil {
 		return out, version, e
 	}
+	rows, e := s.db.QueryContext(ctx, "SELECT target FROM lists WHERE profile=? AND kind IN ('recommendation-hidden','recommendation-ignored')", pid)
+	if e != nil {
+		return out, version, e
+	}
+	ignored := map[string]bool{}
+	for rows.Next() {
+		var key string
+		if e = rows.Scan(&key); e != nil {
+			rows.Close()
+			return out, version, e
+		}
+		ignored[key] = true
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return out, version, e
+	}
+	favorites := []favorite{}
+	for _, f := range out.Favorites {
+		if !ignored[f.Key()] {
+			favorites = append(favorites, f)
+		}
+	}
+	out.Favorites = favorites
+	signals := []signal{}
+	for _, v := range out.Signals {
+		if !ignored[v.Key()] {
+			signals = append(signals, v)
+		}
+	}
+	out.Signals = signals
 	for i := range out.Favorites {
 		t := s.cachedTitle(out.Favorites[i].Identity)
 		if t.Title != "" {

@@ -334,6 +334,20 @@ func (s *Service) recommendations(w http.ResponseWriter, r *http.Request, p Prof
 	if category != "all" && category != "movie" && category != "tv" {
 		return bad()
 	}
+	excluded, hiddenTopics, e := s.recommendationExclusions(r, p.ID)
+	if e != nil {
+		return e
+	}
+	t.Pool = eligibleTitles(t.Pool, category, excluded, time.Now())
+	sections := []Shelf{}
+	for _, shelf := range t.Sections {
+		if hiddenTopics[shelf.ID] {
+			continue
+		}
+		shelf.Titles = eligibleTitles(shelf.Titles, category, excluded, time.Now())
+		sections = append(sections, shelf)
+	}
+	t.Sections = sections
 	t = recommendationView(t, category, p.Preferences.Format)
 	var version, synced int64
 	if e := s.db.QueryRowContext(r.Context(), "SELECT version,synced FROM profiles WHERE id=?", p.ID).Scan(&version, &synced); e != nil {
@@ -352,7 +366,23 @@ func (s *Service) recommendations(w http.ResponseWriter, r *http.Request, p Prof
 	return nil
 }
 func (s *Service) home(w http.ResponseWriter, r *http.Request, p Profile) error {
-	out := s.records("shelf")
+	excluded, hiddenTopics, e := s.recommendationExclusions(r, p.ID)
+	if e != nil {
+		return e
+	}
+	out := []Record{}
+	for _, record := range s.records("shelf") {
+		var shelf Shelf
+		if e = decode(record.Data, &shelf); e != nil {
+			return e
+		}
+		if hiddenTopics[shelf.ID] {
+			continue
+		}
+		shelf.Titles = eligibleTitles(shelf.Titles, "all", excluded, time.Now())
+		record.Data = marshal(shelf)
+		out = append(out, record)
+	}
 	for i := range out {
 		out[i] = publicRecord(out[i])
 	}
@@ -360,6 +390,16 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request, p Profile) error 
 	if rec, ok := s.record("recommendations", p.ID); ok {
 		var t Recommendations
 		_ = decode(rec.Data, &t)
+		t.Pool = eligibleTitles(t.Pool, "all", excluded, time.Now())
+		sections := []Shelf{}
+		for _, shelf := range t.Sections {
+			if hiddenTopics[shelf.ID] {
+				continue
+			}
+			shelf.Titles = eligibleTitles(shelf.Titles, "all", excluded, time.Now())
+			sections = append(sections, shelf)
+		}
+		t.Sections = sections
 		t = recommendationView(t, "all", p.Preferences.Format)
 		in, _, e := s.derived(r.Context(), p.ID)
 		if e != nil {
@@ -372,7 +412,12 @@ func (s *Service) home(w http.ResponseWriter, r *http.Request, p Profile) error 
 		rec.Data = marshal(t)
 		recommendation = rec
 	}
-	write(w, 200, map[string]any{"shelves": out, "recommendations": recommendation})
+	page, e := s.recommendationPage(r, p)
+	if e != nil {
+		return e
+	}
+	write(w, 200, map[string]any{"shelves": out, "recommendations": recommendation,
+		"sections": page.Sections, "featured": page.Featured, "page_version": page.Version})
 	return nil
 }
 func (s *Service) queueRefresh(ctx context.Context, job any) error {

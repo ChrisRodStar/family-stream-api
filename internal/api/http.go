@@ -71,10 +71,16 @@ func (s *Service) route(w http.ResponseWriter, r *http.Request) error {
 				w.WriteHeader(204)
 				return nil
 			}
-		case "library", "favorites":
+		case "library", "favorites", "recommendation-hidden", "recommendation-watched", "recommendation-ignored":
 			return s.list(w, r, profile, p[1], p[2:])
 		case "history", "resume", "progress":
 			return s.history(w, r, profile, p[1], p[2:])
+		case "recommendation-feedback":
+			if len(p) == 2 && method == "GET" {
+				return s.recommendationFeedback(w, r, profile)
+			}
+		case "recommendation-topics":
+			return s.recommendationTopics(w, r, profile, p[2:])
 		case "recommendations":
 			if len(p) == 2 && method == "GET" {
 				return s.recommendations(w, r, profile)

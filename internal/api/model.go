@@ -55,6 +55,9 @@ type Season struct {
 type Shelf struct {
 	ID      string  `json:"id"`
 	Heading string  `json:"heading"`
+	Kind    string  `json:"kind,omitempty"`
+	Source  string  `json:"source,omitempty"`
+	Reason  string  `json:"reason,omitempty"`
 	Titles  []Title `json:"titles"`
 }
 type Recommendations struct {

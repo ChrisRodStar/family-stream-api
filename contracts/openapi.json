@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Family Stream public API",
+    "title": "Stream tv public API",
     "version": "api.v1",
     "description": "Private-network household access with no account login or password. Profiles share one retained household. All public progress/playback times use seconds; catalog runtime remains minutes. See docs/api.md for ownership, required TV coordinates, limits and retry/recovery semantics."
   },
@@ -789,7 +789,7 @@
     },
     "/api/v1/profiles/{profile}/home": {
       "get": {
-        "summary": "Owned Home view and general shelves",
+        "summary": "Assembled recommendation page from saved catalog data and current profile choices",
         "operationId": "get_api_v1_profiles_profile_home",
         "security": [],
         "responses": {
@@ -815,11 +815,31 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Shelf"
+                      }
+                    },
+                    "featured": {
+                      "type": "array",
+                      "maxItems": 1,
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    },
+                    "page_version": {
+                      "type": "string",
+                      "description": "Stable content hash for the assembled page."
                     }
                   },
                   "required": [
                     "shelves",
-                    "recommendations"
+                    "recommendations",
+                    "sections",
+                    "featured",
+                    "page_version"
                   ],
                   "additionalProperties": false
                 }
@@ -844,6 +864,45 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "movie",
+                "tv"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "topic",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "short",
+                "classics",
+                "discovery"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "shelf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "See all: one known category, up to 100 eligible saved titles, without a featured reservation."
             }
           }
         ]
@@ -1764,6 +1823,681 @@
           }
         }
       }
+    },
+    "/api/v1/profiles/{profile}/recommendation-hidden": {
+      "get": {
+        "summary": "Read hidden recommendation choices",
+        "operationId": "get_api_v1_profiles_profile_recommendation-hidden",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "titles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    }
+                  },
+                  "required": [
+                    "titles"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-hidden/{type}/{id}": {
+      "put": {
+        "summary": "Save or undo hidden recommendation choices",
+        "operationId": "put_api_v1_profiles_profile_recommendation-hidden_type_id",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "movie",
+                "tv"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Save or undo hidden recommendation choices",
+        "operationId": "delete_api_v1_profiles_profile_recommendation-hidden_type_id",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "movie",
+                "tv"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-watched": {
+      "get": {
+        "summary": "Read watched recommendation choices",
+        "operationId": "get_api_v1_profiles_profile_recommendation-watched",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "titles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    }
+                  },
+                  "required": [
+                    "titles"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-watched/{type}/{id}": {
+      "put": {
+        "summary": "Save or undo watched recommendation choices",
+        "operationId": "put_api_v1_profiles_profile_recommendation-watched_type_id",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "movie",
+                "tv"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Save or undo watched recommendation choices",
+        "operationId": "delete_api_v1_profiles_profile_recommendation-watched_type_id",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "movie",
+                "tv"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-ignored": {
+      "get": {
+        "summary": "Read ignored recommendation choices",
+        "operationId": "get_api_v1_profiles_profile_recommendation-ignored",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "titles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    }
+                  },
+                  "required": [
+                    "titles"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-ignored/{type}/{id}": {
+      "put": {
+        "summary": "Save or undo ignored recommendation choices",
+        "operationId": "put_api_v1_profiles_profile_recommendation-ignored_type_id",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "movie",
+                "tv"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Save or undo ignored recommendation choices",
+        "operationId": "delete_api_v1_profiles_profile_recommendation-ignored_type_id",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "movie",
+                "tv"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-feedback": {
+      "get": {
+        "summary": "Read reversible recommendation choices",
+        "operationId": "get_api_v1_profiles_profile_recommendation-feedback",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hidden": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    },
+                    "watched": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    },
+                    "ignored": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    },
+                    "favorites": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Title"
+                      }
+                    },
+                    "topics": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "hidden",
+                    "watched",
+                    "ignored",
+                    "favorites",
+                    "topics"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-topics": {
+      "get": {
+        "summary": "Read hidden category IDs",
+        "operationId": "get_api_v1_profiles_profile_recommendation-topics",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "topics": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "topics"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile}/recommendation-topics/{topic}": {
+      "put": {
+        "summary": "Hide a known category",
+        "operationId": "put_api_v1_profiles_profile_recommendation-topics_topic",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(topic-|taste-)[A-Za-z0-9_-]+$"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Restore a category",
+        "operationId": "delete_api_v1_profiles_profile_recommendation-topics_topic",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "Stable redacted error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^(topic-|taste-)[A-Za-z0-9_-]+$"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2354,6 +3088,15 @@
             "items": {
               "$ref": "#/components/schemas/Title"
             }
+          },
+          "kind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
           }
         },
         "required": [

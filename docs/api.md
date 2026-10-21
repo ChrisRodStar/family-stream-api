@@ -179,3 +179,53 @@ Common errors: 400 invalid_request; 401 unauthorized; 403 forbidden/origin_rejec
 410 revoked/session_expired; 422 no_source; 429 overloaded/playback_busy;
 502 invalid private response; 503 private service/storage unavailable. Preserve
 profile/session/key context when retrying; never display raw private bodies.
+
+## Recommendation page and feedback
+
+`GET /profiles/{profile}/home?type=all&topic=all` now returns the assembled page:
+
+- `sections`: ordered rows with no repeated titles across the page.
+- `featured`: zero or one reserved title, removed from the rows.
+- `page_version`: a stable hash of the page contents.
+- `shelves` and `recommendations`: retained envelope fields for older clients.
+
+`type` accepts `all`, `movie`, or `tv`. `topic` accepts `all`, `short`,
+`classics`, or `discovery`. Invalid values return `invalid_request`.
+
+Rows may include `kind`, `source`, and `reason`. These describe why a row exists;
+they do not establish playback availability. Trending is labeled as TMDB weekly
+trending. Upcoming/theatrical/airing lists stay outside the assembled Home page.
+
+### Feedback routes
+
+| Route below `/profiles/{profile}` | Use |
+|---|---|
+| GET `/recommendation-feedback` | Read `hidden`, `watched`, `ignored`, `favorites`, and hidden `topics`. |
+| GET `/recommendation-hidden` | Read titles marked Not for me. |
+| GET `/recommendation-watched` | Read titles manually marked Already watched. |
+| GET `/recommendation-ignored` | Read titles excluded from taste inputs. |
+| PUT, DELETE `/recommendation-{hidden\|watched\|ignored}/{type}/{id}` | Save or undo a choice; 204. |
+| PUT, DELETE `/favorites/{type}/{id}` | Like or undo Like; existing route and limit. |
+| GET `/recommendation-topics` | Read hidden category IDs. |
+| PUT, DELETE `/recommendation-topics/{topic}` | Hide a known `topic-`/`taste-` category or restore it; 204. |
+
+Choices use the existing profile-scoped `lists` table. No migration is required.
+Title-choice lists have the existing 1,000-title bound; favorites retain their
+50-title bound. Category hiding accepts only known category IDs.
+
+Not for me hides a title and excludes it from future taste inputs. Already watched
+hides it from suggestions without inventing playback progress. Ignore leaves the
+title visible but removes its favorite/viewing contribution after the background
+recommendation refresh. Undo preserves the original history and saved favorites.
+
+Completed movies are also excluded from discovery. Completing one TV episode does
+not hide the series. Search, My List, and resume remain separate from discovery.
+All of these reads use saved data; no TMDB/provider/relay request is required.
+
+Update the API before publishing catalog snapshots with the optional row fields:
+older API versions strictly reject unknown fields in catalog records.
+
+For See all, pass `shelf={known_shelf_id}` to the Home endpoint. The response keeps
+only that eligible category and returns up to 100 saved titles, with no featured
+reservation. Normal Home previews contain up to 12 titles per row. Specific topic
+filters also allow up to 100 titles. Hidden titles and categories still apply.
